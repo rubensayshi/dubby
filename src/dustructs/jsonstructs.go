@@ -27,7 +27,7 @@ type scriptExportJson struct {
 	Events   []Event         `json:"events"`
 }
 
-func (e ScriptExport) UnmarshalJson(d []byte) error {
+func (e ScriptExport) UnmarshalJSON(d []byte) error {
 	tmp := &scriptExportJson{}
 	err := json.Unmarshal(d, tmp)
 	if err != nil {
@@ -52,7 +52,7 @@ func (e ScriptExport) UnmarshalJson(d []byte) error {
 	return nil
 }
 
-func (e ScriptExport) MarshalJson() ([]byte, error) {
+func (e *ScriptExport) MarshalJSON() ([]byte, error) {
 	slots := make(map[string]Slot, len(e.Slots))
 	for k, v := range e.Slots {
 		kstr := strconv.Itoa(k)
