@@ -1,0 +1,37 @@
+{
+  "slots": {
+    "-1": {
+      "name": "unit",
+      "type": {
+        "events": [],
+        "methods": []
+      }
+    }
+  },
+  "handlers": [
+    {
+      "code": "unit.exit() -- onstart\n",
+      "filter": {
+        "args": [],
+        "signature": "start()",
+        "slotKey": "-1"
+      },
+      "key": "1"
+    },
+    {
+      "code": "unit.exit() -- ontick Live\n",
+      "filter": {
+        "args": [
+          {
+            "value": "Live"
+          }
+        ],
+        "signature": "tick(timerId)",
+        "slotKey": "-1"
+      },
+      "key": "2"
+    }
+  ],
+  "methods": [],
+  "events": []
+}
