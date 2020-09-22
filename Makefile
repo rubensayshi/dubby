@@ -52,3 +52,13 @@ build-dujsonimporter:
 
 build-dujsonexporter:
 	go build -o $(BINDIR)/dujsonexporter src/cmd/dujsonexporter/main.go
+
+build-release:
+	rm -rf ./release
+	mkdir ./release
+	GOOS=windows GOARCH=amd64 go build -o release/dujsonimporter.exe src/cmd/dujsonimporter/main.go
+	GOOS=windows GOARCH=amd64 go build -o release/dujsonexporter.exe src/cmd/dujsonexporter/main.go
+	GOOS=darwin GOARCH=amd64 go build -o release/dujsonimporter-darwin src/cmd/dujsonimporter/main.go
+	GOOS=darwin GOARCH=amd64 go build -o release/dujsonexporter-darwin src/cmd/dujsonexporter/main.go
+	GOOS=linux GOARCH=amd64 go build -o release/dujsonimporter-linux src/cmd/dujsonimporter/main.go
+	GOOS=linux GOARCH=amd64 go build -o release/dujsonexporter-linux src/cmd/dujsonexporter/main.go
