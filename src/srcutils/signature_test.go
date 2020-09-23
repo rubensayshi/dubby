@@ -27,11 +27,19 @@ func TestArgsFromFileHeader(t *testing.T) {
 	assert := require.New(t)
 
 	{
+		fn, args, err := ArgsFromFileHeader("tick(\"redraw\")")
+		assert.NoError(err)
+		assert.Equal("tick", fn)
+		assert.Equal(1, len(args))
+		assert.Equal("redraw", args[0].Value)
+	}
+
+	{
 		fn, args, err := ArgsFromFileHeader("tick(\"Live\")")
 		assert.NoError(err)
 		assert.Equal("tick", fn)
 		assert.Equal(1, len(args))
-		assert.Equal("Live", args[0])
+		assert.Equal("Live", args[0].Value)
 	}
 
 	{
@@ -39,7 +47,7 @@ func TestArgsFromFileHeader(t *testing.T) {
 		assert.NoError(err)
 		assert.Equal("tick", fn)
 		assert.Equal(2, len(args))
-		assert.Equal("Live", args[0])
-		assert.Equal("and Let Die", args[0])
+		assert.Equal("Live", args[0].Value)
+		assert.Equal("and Let Die", args[1].Value)
 	}
 }

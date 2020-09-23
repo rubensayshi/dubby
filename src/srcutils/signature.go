@@ -9,7 +9,7 @@ import (
 	"github.com/rubensayshi/duconverter/src/dustructs"
 )
 
-var sigRegex = regexp.MustCompile(`^(?P<fn>[a-zA-Z0-9_-]+)\((?P<args>.*)\)$`)
+var sigRegex = regexp.MustCompile(`^ *(?P<fn>[a-zA-Z0-9_-]+)\((?P<args>.*)\) *$`)
 
 func SignatureWithArgs(signature string, args []dustructs.Arg) (string, error) {
 	res := sigRegex.FindStringSubmatch(signature)
@@ -41,6 +41,9 @@ func SignatureWithArgs(signature string, args []dustructs.Arg) (string, error) {
 
 func ArgsFromFileHeader(header string) (string, []dustructs.Arg, error) {
 	res := sigRegex.FindStringSubmatch(header)
+	if res == nil || len(res) < 2 {
+		return "", nil, errors.Errorf("Header does not match expected pattern: %s", header)
+	}
 
 	// parse the args from the signature
 	fn := res[1]

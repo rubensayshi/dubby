@@ -120,6 +120,7 @@ func readSlotDirInto(slotDir string, slotKey int, scriptExport *dustructs.Script
 			return errors.WithStack(err)
 		}
 		content := string(buf)
+		content = strings.ReplaceAll(content, "\r\n", "\n")
 
 		handlerName := strings.TrimSuffix(file.Name(), ".lua")
 		s := strings.Split(handlerName, ".")
