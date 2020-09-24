@@ -27,7 +27,7 @@ type scriptExportJson struct {
 	Events   []Event         `json:"events"`
 }
 
-func (e ScriptExport) UnmarshalJSON(d []byte) error {
+func (e *ScriptExport) UnmarshalJSON(d []byte) error {
 	tmp := &scriptExportJson{}
 	err := json.Unmarshal(d, tmp)
 	if err != nil {

@@ -13,15 +13,14 @@ import (
 func TestParseJson(t *testing.T) {
 	assert := require.New(t)
 
-	f, err := ioutil.ReadFile(path.Join(utils.ROOT, "src/dustructs", "testvector1.json"))
+	f, err := ioutil.ReadFile(path.Join(utils.ROOT, "testvectors", "testvector1", "input.json"))
 	assert.NoError(err)
 
 	export := &ScriptExport{}
 	err = json.Unmarshal(f, export)
 	assert.NoError(err)
 
-	assert.Equal(13, len(export.Slots))
-	assert.Equal("library", export.Slots[SLOT_IDX_LIBRARY].Name)
-	assert.Equal("hematite", export.Slots[3].Name)
-	assert.Equal("unit.setTimer(\"Live\",1)\nswitch.activate()\n", export.Handlers[1].Code)
+	assert.Equal(1, len(export.Slots))
+	assert.Equal("unit", export.Slots[SLOT_IDX_UNIT].Name)
+	assert.Equal("unit.exit() -- ontick Live\n", export.Handlers[1].Code)
 }

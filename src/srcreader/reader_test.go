@@ -21,7 +21,7 @@ func TestSrcReader_Read(t *testing.T) {
 	err = json.Unmarshal(f, expected)
 	assert.NoError(err)
 
-	actual, err := Read(path.Join(utils.ROOT, "src/srcreader", "testvectors/testvector1", "output"))
+	actual, err := Read(path.Join(utils.ROOT, "testvectors/testvector1", "output"))
 	assert.NoError(err)
 
 	assert.Equal(expected, actual)
