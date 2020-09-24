@@ -57,6 +57,21 @@ func readSrcDirInto(dir string, scriptExport *dustructs.ScriptExport) error {
 		return errors.WithStack(err)
 	}
 
+	lib, err := os.Stat(path.Join(dir, "lib"))
+	if !os.IsNotExist(err) {
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		if !lib.IsDir() {
+			return errors.Errorf("lib is a file, expected a directory")
+		}
+
+		err = readLibDirInto(path.Join(dir, lib.Name()), scriptExport)
+		if err != nil {
+			return errors.WithStack(err)
+		}
+	}
+
 	return nil
 }
 
@@ -162,6 +177,59 @@ func readSlotDirInto(slotDir string, slotKey int, scriptExport *dustructs.Script
 			scriptExport.Handlers = append(scriptExport.Handlers, handler)
 		}
 	}
+
+	return nil
+}
+
+func readLibDirInto(libDir string, scriptExport *dustructs.ScriptExport) error {
+	files, err := ioutil.ReadDir(libDir)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	if len(files) == 0 {
+		return nil
+	}
+
+	libContent := ""
+
+	for _, file := range files {
+		filePath := path.Join(libDir, file.Name())
+
+		if file.IsDir() {
+			return errors.Errorf("file is a directory, expected a file: %s", filePath)
+		}
+
+		buf, err := ioutil.ReadFile(filePath)
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		content := string(buf)
+		content = strings.ReplaceAll(content, "\r\n", "\n")
+
+		handlerName := strings.TrimSuffix(file.Name(), ".lua")
+		s := strings.Split(handlerName, ".")
+		libName := strings.Join(s[1:], ".")
+
+		libContent = libContent + "-- !DU[lib]: " + libName + "\n\n" + content
+	}
+
+	// shift all handlers 1 slot forward
+	for key, handler := range scriptExport.Handlers {
+		scriptExport.Handlers[key].Key = handler.Key + 1
+	}
+
+	handler := dustructs.Handler{
+		Code: libContent,
+		Filter: dustructs.Filter{
+			Args:      []dustructs.Arg{},
+			Signature: "start()",
+			SlotKey:   dustructs.SLOT_IDX_LIBRARY,
+		},
+		Key: 1, // @TODO: maybe we can do 0?
+	}
+
+	scriptExport.Handlers = append([]dustructs.Handler{handler}, scriptExport.Handlers...)
 
 	return nil
 }

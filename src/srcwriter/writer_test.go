@@ -2,7 +2,6 @@ package srcwriter
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path"
@@ -13,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSrcWriter_WriteTo(t *testing.T) {
+func TestSrcWriter_WriteTo1(t *testing.T) {
 	assert := require.New(t)
 
 	f, err := ioutil.ReadFile(path.Join(utils.ROOT, "testvectors/testvector1", "input.json"))
@@ -38,6 +37,31 @@ func TestSrcWriter_WriteTo(t *testing.T) {
 	checkExpectedDir(assert, actualDir, expectedDir)
 }
 
+func TestSrcWriter_WriteTo2(t *testing.T) {
+	assert := require.New(t)
+
+	f, err := ioutil.ReadFile(path.Join(utils.ROOT, "testvectors/testvector2", "input.json"))
+	assert.NoError(err)
+
+	export := &dustructs.ScriptExport{}
+	err = json.Unmarshal(f, export)
+	assert.NoError(err)
+
+	dir, err := ioutil.TempDir(path.Join(utils.ROOT, "tmp"), "test")
+	assert.NoError(err)
+	defer os.RemoveAll(dir) // always cleanup the mess
+
+	w := NewSrcWriter(export)
+	err = w.WriteTo(dir)
+	assert.NoError(err)
+
+	actualDir := dir
+	expectedDir := path.Join(utils.ROOT, "testvectors/testvector2", "output")
+
+	checkActualDir(assert, actualDir, expectedDir)
+	checkExpectedDir(assert, actualDir, expectedDir)
+}
+
 func checkActualDir(assert *require.Assertions, actualDir string, expectedDir string) {
 	actualFiles, err := ioutil.ReadDir(actualDir)
 	assert.NoError(err)
@@ -46,10 +70,8 @@ func checkActualDir(assert *require.Assertions, actualDir string, expectedDir st
 		actualPath := path.Join(actualDir, actualFile.Name())
 		expectedPath := path.Join(expectedDir, actualFile.Name())
 
-		fmt.Printf("actual: %s, expected: %s \n", actualPath, expectedPath)
-
 		if !fileExists(expectedPath) {
-			assert.FailNowf("file not expected", actualFile.Name())
+			assert.FailNowf("file not expected", actualPath)
 		} else {
 			if actualFile.IsDir() {
 				checkActualDir(assert, actualPath, expectedPath)
@@ -74,7 +96,7 @@ func checkExpectedDir(assert *require.Assertions, actualDir string, expectedDir 
 		expectedPath := path.Join(expectedDir, expectedFile.Name())
 
 		if !fileExists(actualPath) {
-			assert.Failf("file expected", expectedFile.Name())
+			assert.Failf("file expected", expectedPath)
 		} else {
 			if expectedFile.IsDir() {
 				checkExpectedDir(assert, actualPath, expectedPath)

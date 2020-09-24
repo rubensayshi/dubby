@@ -36,6 +36,7 @@ func (e *ScriptExport) UnmarshalJSON(d []byte) error {
 
 	slots := make(map[int]*Slot, len(tmp.Slots))
 	for k, v := range tmp.Slots {
+		v := v // we're referencing this so need to declare inside the loop
 		kint, err := strconv.Atoi(k)
 		if err != nil {
 			return errors.WithStack(err)
