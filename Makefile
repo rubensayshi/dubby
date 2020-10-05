@@ -25,15 +25,15 @@ EXTRA ?=
 #
 # there's a few possible arguments to control `go tests` that are passed down
 # 	TESTS=		can be used to specify which tests to run as a path, defaults to ./src/...
-# 				you can do `TESTS=./src/modules/orm/...`
-# 				or even multiple (note the '') `TESTS='./src/modules/orm/... ./src/container/...'`
+# 				you can do `TESTS=./src/srcutils/...`
+# 				or even multiple (note the '') `TESTS='./src/srcutils/... ./src/srcreader/...'`
 #
 #	PARALLEL=	sets the -parellel=<X> number, defaults to 8
-#	RUN=		sets the -run flag to apply a regex to which tests to run (eg; `RUN=Test_apiLogin1`)
+#	RUN=		sets the -run flag to apply a regex to which tests to run (eg; `RUN=TestSignatureWithArgs`)
 #	EXTRA=		everything in EXTRA is passed down to go test (eg; `EXTRA=-v` or `EXTRA=`-v -race -cover`)
 #
 reflex-test:
-	reflex -s -r '^src/.*\.go$$' -R 'vendor/' -R 'tmp/' -- sh -c 'make go-test'
+	reflex -s -r '^((src/.*\.go)|(testvectors/.*))$$' -R 'vendor/' -R 'tmp/' -- sh -c 'make go-test'
 
 #
 # go-test
@@ -45,20 +45,12 @@ go-test:
 
 BINDIR ?= ./bin
 
-build: build-dujsonimporter build-dujsonexporter
-
-build-dujsonimporter:
-	go build -o $(BINDIR)/dujsonimporter src/cmd/dujsonimporter/main.go
-
-build-dujsonexporter:
-	go build -o $(BINDIR)/dujsonexporter src/cmd/dujsonexporter/main.go
+build:
+	go build -o $(BINDIR)/dubby src/cmd/dubby/main.go
 
 build-release:
 	rm -rf ./release
 	mkdir ./release
-	GOOS=windows GOARCH=amd64 go build -o release/dujsonimporter.exe src/cmd/dujsonimporter/main.go
-	GOOS=windows GOARCH=amd64 go build -o release/dujsonexporter.exe src/cmd/dujsonexporter/main.go
-	GOOS=darwin GOARCH=amd64 go build -o release/dujsonimporter-darwin src/cmd/dujsonimporter/main.go
-	GOOS=darwin GOARCH=amd64 go build -o release/dujsonexporter-darwin src/cmd/dujsonexporter/main.go
-	GOOS=linux GOARCH=amd64 go build -o release/dujsonimporter-linux src/cmd/dujsonimporter/main.go
-	GOOS=linux GOARCH=amd64 go build -o release/dujsonexporter-linux src/cmd/dujsonexporter/main.go
+	GOOS=windows GOARCH=amd64 go build -o release/dubby.exe src/cmd/dubby/main.go
+	GOOS=darwin GOARCH=amd64 go build -o release/dubby-darwin src/cmd/dubby/main.go
+	GOOS=linux GOARCH=amd64 go build -o release/dubby-linux src/cmd/dubby/main.go

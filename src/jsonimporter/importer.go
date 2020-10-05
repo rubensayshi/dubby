@@ -5,7 +5,7 @@ import (
 	"io/ioutil"
 
 	"github.com/pkg/errors"
-	"github.com/rubensayshi/duconverter/src/dustructs"
+	"github.com/rubensayshi/dubby/src/dustructs"
 )
 
 func Import(inputFile string) (*dustructs.ScriptExport, error) {

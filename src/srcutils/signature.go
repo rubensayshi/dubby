@@ -6,12 +6,23 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-	"github.com/rubensayshi/duconverter/src/dustructs"
+	"github.com/rubensayshi/dubby/src/dustructs"
 )
 
-var sigRegex = regexp.MustCompile(`^ *(?P<fn>[a-zA-Z0-9_-]+)\((?P<args>.*)\) *$`)
+var FilterSignatures = map[string]string{
+	"start":       "start()",
+	"stop":        "stop()",
+	"flush":       "flush()",
+	"update":      "update()",
+	"tick":        "tick(timerId)",
+	"actionStart": "actionStart(action)",
+	"actionStop":  "actionStop(action)",
+	"actionLoop":  "actionLoop(action)",
+}
 
-func SignatureWithArgs(signature string, args []dustructs.Arg) (string, error) {
+var sigRegex = regexp.MustCompile(`^ *(?P<fn>[a-zA-Z0-9_-]+)\(\[?(?P<args>.*?)\]?\) *$`)
+
+func MakeHeader(signature string, args []dustructs.Arg) (string, error) {
 	res := sigRegex.FindStringSubmatch(signature)
 
 	// parse the args from the signature
@@ -31,15 +42,19 @@ func SignatureWithArgs(signature string, args []dustructs.Arg) (string, error) {
 		return "", errors.Errorf("Wrong number of args, expected %d: %s", len(fnargs), signature)
 	}
 
-	resArgs := make([]string, len(fnargs))
-	for k, _ := range resArgs {
-		resArgs[k] = fmt.Sprintf("\"%s\"", args[k].Value)
+	if len(fnargs) == 0 {
+		return fmt.Sprintf("%s()", fn), nil
 	}
 
-	return fmt.Sprintf("%s(%s)", fn, strings.Join(resArgs, ", ")), nil
+	resArgs := make([]string, len(fnargs))
+	for k, _ := range resArgs {
+		resArgs[k] = args[k].Value
+	}
+
+	return fmt.Sprintf("%s([%s])", fn, strings.Join(resArgs, ", ")), nil
 }
 
-func ArgsFromFileHeader(header string) (string, []dustructs.Arg, error) {
+func ParseHeader(header string) (string, []dustructs.Arg, error) {
 	res := sigRegex.FindStringSubmatch(header)
 	if res == nil || len(res) < 2 {
 		return "", nil, errors.Errorf("Header does not match expected pattern: %s", header)

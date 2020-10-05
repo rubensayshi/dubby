@@ -4,16 +4,23 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/rubensayshi/dubby/src/luamin"
+
 	"github.com/pkg/errors"
-	"github.com/rubensayshi/duconverter/src/dustructs"
-	"github.com/rubensayshi/duconverter/src/srcutils"
+	"github.com/rubensayshi/dubby/src/dustructs"
+	"github.com/rubensayshi/dubby/src/srcutils"
 )
 
+var badHandlerStartRegexp = regexp.MustCompile(`^.*-- ?!DU:.*$`)
+var handlerStartRegexp = regexp.MustCompile(`^(do)? *-- ?!DU: *((?P<fn>[a-zA-Z0-9_-]+)\(\[?(?P<args>.*?)\]?\)) *$`)
+var handlerEndRegexp = regexp.MustCompile(`^(end)? *-- ?!DU: end *$`)
+
 func Read(srcDir string) (*dustructs.ScriptExport, error) {
-	r := NewSrcReader(srcDir)
+	r := NewSrcReader(srcDir, false)
 	err := r.Read()
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -24,26 +31,38 @@ func Read(srcDir string) (*dustructs.ScriptExport, error) {
 
 type SrcReader struct {
 	srcDir       string
+	minify       bool
 	scriptExport *dustructs.ScriptExport
+	report       *Report
 }
 
-func NewSrcReader(srcDir string) *SrcReader {
+type Report struct {
+	SrcLen      int
+	MinifiedLen int
+}
+
+func NewSrcReader(srcDir string, minify bool) *SrcReader {
 	return &SrcReader{
-		srcDir: srcDir,
-		scriptExport: &dustructs.ScriptExport{
-			Slots:    make(map[int]*dustructs.Slot),
-			Handlers: make([]dustructs.Handler, 0),
-			Methods:  make([]dustructs.Method, 0),
-			Events:   make([]dustructs.Event, 0),
-		},
+		srcDir:       srcDir,
+		minify:       minify,
+		scriptExport: dustructs.NewScriptExport(),
+		report:       &Report{},
 	}
 }
 
-func (i *SrcReader) Read() error {
-	return readSrcDirInto(i.srcDir, i.scriptExport)
+func (r *SrcReader) ScriptExport() *dustructs.ScriptExport {
+	return r.scriptExport
 }
 
-func readSrcDirInto(dir string, scriptExport *dustructs.ScriptExport) error {
+func (r *SrcReader) Report() *Report {
+	return r.report
+}
+
+func (r *SrcReader) Read() error {
+	return r.readFromSrcDir(r.srcDir)
+}
+
+func (r *SrcReader) readFromSrcDir(dir string) error {
 	slots, err := os.Stat(path.Join(dir, "slots"))
 	if err != nil {
 		return errors.WithStack(err)
@@ -52,7 +71,7 @@ func readSrcDirInto(dir string, scriptExport *dustructs.ScriptExport) error {
 		return errors.Errorf("slots is a file, expected a directory")
 	}
 
-	err = readSlotsDirInto(path.Join(dir, slots.Name()), scriptExport)
+	err = r.readFromSlotsDir(path.Join(dir, slots.Name()))
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -66,7 +85,7 @@ func readSrcDirInto(dir string, scriptExport *dustructs.ScriptExport) error {
 			return errors.Errorf("lib is a file, expected a directory")
 		}
 
-		err = readLibDirInto(path.Join(dir, lib.Name()), scriptExport)
+		err = r.readFromLibDir(path.Join(dir, lib.Name()))
 		if err != nil {
 			return errors.WithStack(err)
 		}
@@ -75,20 +94,23 @@ func readSrcDirInto(dir string, scriptExport *dustructs.ScriptExport) error {
 	return nil
 }
 
-func readSlotsDirInto(slotsDir string, scriptExport *dustructs.ScriptExport) error {
-	slotDirs, err := ioutil.ReadDir(slotsDir)
+func (r *SrcReader) readFromSlotsDir(slotsDir string) error {
+	slotFiles, err := ioutil.ReadDir(slotsDir)
 	if err != nil {
 		return errors.WithStack(err)
 	}
 
-	for _, slotDir := range slotDirs {
-		slotDirPath := path.Join(slotsDir, slotDir.Name())
+	for _, slotFile := range slotFiles {
+		slotFilePath := path.Join(slotsDir, slotFile.Name())
 
-		if !slotDir.IsDir() {
-			return errors.Errorf("slotDir is a file, expected a directory: %s", slotDirPath)
+		if slotFile.IsDir() {
+			return errors.Errorf("slotFile is a directory, expected a file: %s", slotFilePath)
 		}
 
-		s := strings.Split(slotDir.Name(), ".")
+		s := strings.Split(slotFile.Name(), ".")
+		if len(s) < 2 {
+			return errors.Errorf("slotFile should its slot key as index [%s]", slotFile.Name())
+		}
 		slotKeyStr := s[0]
 		slotName := strings.Join(s[1:], ".")
 
@@ -98,17 +120,11 @@ func readSlotsDirInto(slotsDir string, scriptExport *dustructs.ScriptExport) err
 		}
 
 		// init the slot
-		if scriptExport.Slots[slotKey] == nil {
-			scriptExport.Slots[slotKey] = &dustructs.Slot{
-				Name: slotName,
-				Type: dustructs.Type{
-					Methods: make([]dustructs.Method, 0),
-					Events:  make([]dustructs.Event, 0),
-				},
-			}
+		if r.scriptExport.Slots[slotKey] == nil {
+			r.scriptExport.Slots[slotKey] = dustructs.NewSlot(slotName)
 		}
 
-		err = readSlotDirInto(slotDirPath, slotKey, scriptExport)
+		err = r.readFromSlotFile(slotFilePath, slotKey)
 		if err != nil {
 			return errors.WithStack(err)
 		}
@@ -117,71 +133,158 @@ func readSlotsDirInto(slotsDir string, scriptExport *dustructs.ScriptExport) err
 	return nil
 }
 
-func readSlotDirInto(slotDir string, slotKey int, scriptExport *dustructs.ScriptExport) error {
-	files, err := ioutil.ReadDir(slotDir)
+func (r *SrcReader) readFromSlotFile(filePath string, slotKey int) error {
+	handlers := make([]*dustructs.Handler, 0)
+
+	buf, err := ioutil.ReadFile(filePath)
 	if err != nil {
 		return errors.WithStack(err)
 	}
+	content := string(buf)
+	// @TODO: for now, get rid of windows line endings, should be configurable ...
+	content = strings.ReplaceAll(content, "\r\n", "\n")
 
-	for _, file := range files {
-		filePath := path.Join(slotDir, file.Name())
+	lines := strings.Split(content, "\n")
+	if len(lines) > 0 {
+		var handler *dustructs.Handler
 
-		if file.IsDir() {
-			return errors.Errorf("file is a directory, expected a file: %s", filePath)
-		}
+		mainCode := make([]string, 0)
+		handlerCode := make([]string, 0)
 
-		buf, err := ioutil.ReadFile(filePath)
-		if err != nil {
-			return errors.WithStack(err)
-		}
-		content := string(buf)
-		content = strings.ReplaceAll(content, "\r\n", "\n")
-
-		handlerName := strings.TrimSuffix(file.Name(), ".lua")
-		s := strings.Split(handlerName, ".")
-		keyStr := s[0]
-		signature := strings.Join(s[1:], ".")
-
-		key, err := strconv.Atoi(keyStr)
-		if err != nil {
-			return errors.WithStack(err)
-		}
-
-		var args []dustructs.Arg
-
-		lines := strings.Split(content, "\n")
-		if len(lines) > 0 {
-			if strings.HasPrefix(lines[0], "-- !DU: ") {
-				content = strings.Join(lines[1:], "\n")
-
-				header := strings.TrimPrefix(lines[0], "-- !DU: ")
-
-				_, argsFromHeader, err := srcutils.ArgsFromFileHeader(header)
+		for k, line := range lines {
+			if handlerStartRegexp.MatchString(line) {
+				header, err := extractHeaderFromLine(line)
 				if err != nil {
 					return errors.WithStack(err)
 				}
 
-				args = argsFromHeader
-			}
+				fnname, args, err := srcutils.ParseHeader(header)
+				if err != nil {
+					return errors.WithStack(err)
+				}
 
-			handler := dustructs.Handler{
-				Code: content,
-				Filter: dustructs.Filter{
-					Args:      args,
-					Signature: signature,
-					SlotKey:   slotKey,
-				},
-				Key: key,
-			}
+				if srcutils.FilterSignatures[fnname] == "" {
+					return errors.Errorf("unknown filter signature: [%d][%s]", k, line)
+				}
 
-			scriptExport.Handlers = append(scriptExport.Handlers, handler)
+				signature := srcutils.FilterSignatures[fnname]
+				header, _ = srcutils.MakeHeader(signature, args)
+
+				handler = &dustructs.Handler{
+					Filter: &dustructs.Filter{
+						Signature: header,
+						Args:      args,
+						SlotKey:   slotKey,
+					},
+				}
+			} else if handlerEndRegexp.MatchString(line) {
+				if handler == nil {
+					// @TODO: could be warning?
+					return errors.Errorf("end marker without start: [%d][%s]", k, line)
+				}
+
+				// trim off any (consistent) indenting
+				handlerCode = srcutils.TrimConsistentIndenting(handlerCode)
+
+				code := strings.Join(handlerCode, "\n")
+				r.report.SrcLen += len(code)
+				if r.minify {
+					minified, err := luamin.LuaMin([]byte(code))
+					if err != nil {
+						return errors.WithStack(err)
+					}
+
+					code = string(minified)
+					r.report.MinifiedLen += len(code)
+				}
+
+				// flush handler
+				handler.Code = code
+				handlers = append(handlers, handler)
+
+				// reset state
+				handler = nil
+				handlerCode = []string{}
+
+			} else if badHandlerStartRegexp.MatchString(line) {
+				// @TODO: could be warning?
+				return errors.Errorf("bad marker: [%d][%s]", k, line)
+			} else {
+				// append code to handler or to main block
+				if handler != nil {
+					handlerCode = append(handlerCode, line)
+				} else {
+					mainCode = append(mainCode, line)
+				}
+			}
 		}
+
+		if handler != nil || len(handlerCode) > 0 {
+			// @TODO: could be warning?
+			return errors.Errorf("unclosed state")
+		}
+
+		// if we have a main block then we need to add a handler for it
+		if len(mainCode) > 0 {
+			justWhitelines := true
+			for _, l := range mainCode {
+				if l != "" {
+					justWhitelines = false
+					break
+				}
+			}
+
+			if !justWhitelines {
+				// main block needs marker
+				mainCode = append([]string{"-- !DU: main"}, mainCode...)
+
+				// trim of 2 trailing lines, these keep being added
+				if mainCode[len(mainCode)-1] == "" {
+					mainCode = mainCode[:len(mainCode)-1]
+				}
+				if mainCode[len(mainCode)-1] == "" {
+					mainCode = mainCode[:len(mainCode)-1]
+				}
+
+				code := strings.Join(mainCode, "\n")
+				r.report.SrcLen += len(code)
+				if r.minify {
+					minified, err := luamin.LuaMin([]byte(code))
+					if err != nil {
+						return errors.WithStack(err)
+					}
+
+					code = string(minified)
+					r.report.MinifiedLen += len(code)
+				}
+
+				mainHandler := &dustructs.Handler{
+					Code: code,
+					Filter: &dustructs.Filter{
+						Signature: "start()",
+						Args:      []dustructs.Arg{},
+						SlotKey:   slotKey,
+					},
+				}
+				handlers = append([]*dustructs.Handler{mainHandler}, handlers...)
+			}
+		}
+	}
+
+	// fix the handler keys
+	key := len(r.scriptExport.Handlers)
+	for _, handler := range handlers {
+		key++
+		handler.Key = key
+
+		r.scriptExport.Handlers = append(r.scriptExport.Handlers, handler)
+
 	}
 
 	return nil
 }
 
-func readLibDirInto(libDir string, scriptExport *dustructs.ScriptExport) error {
+func (r *SrcReader) readFromLibDir(libDir string) error {
 	files, err := ioutil.ReadDir(libDir)
 	if err != nil {
 		return errors.WithStack(err)
@@ -191,7 +294,7 @@ func readLibDirInto(libDir string, scriptExport *dustructs.ScriptExport) error {
 		return nil
 	}
 
-	libContent := ""
+	libContent := make([]string, 0)
 
 	for _, file := range files {
 		filePath := path.Join(libDir, file.Name())
@@ -208,28 +311,48 @@ func readLibDirInto(libDir string, scriptExport *dustructs.ScriptExport) error {
 		content = strings.ReplaceAll(content, "\r\n", "\n")
 
 		handlerName := strings.TrimSuffix(file.Name(), ".lua")
-		s := strings.Split(handlerName, ".")
-		libName := strings.Join(s[1:], ".")
+		libName := handlerName
 
-		libContent = libContent + "-- !DU[lib]: " + libName + "\n\n" + content
+		libContent = append(libContent, "-- !DU[lib]: "+libName+"\n\n"+content)
 	}
 
 	// shift all handlers 1 slot forward
-	for key, handler := range scriptExport.Handlers {
-		scriptExport.Handlers[key].Key = handler.Key + 1
+	for key, handler := range r.scriptExport.Handlers {
+		r.scriptExport.Handlers[key].Key = handler.Key + 1
 	}
 
-	handler := dustructs.Handler{
-		Code: libContent,
-		Filter: dustructs.Filter{
+	code := strings.Join(libContent, "\n")
+	r.report.SrcLen += len(code)
+	if r.minify {
+		minified, err := luamin.LuaMin([]byte(code))
+		if err != nil {
+			return errors.WithStack(err)
+		}
+
+		code = string(minified)
+		r.report.MinifiedLen += len(code)
+	}
+
+	handler := &dustructs.Handler{
+		Code: code,
+		Filter: &dustructs.Filter{
 			Args:      []dustructs.Arg{},
 			Signature: "start()",
-			SlotKey:   dustructs.SLOT_IDX_LIBRARY,
+			SlotKey:   dustructs.SLOT_IDX_UNIT,
 		},
 		Key: 1, // @TODO: maybe we can do 0?
 	}
 
-	scriptExport.Handlers = append([]dustructs.Handler{handler}, scriptExport.Handlers...)
+	r.scriptExport.Handlers = append([]*dustructs.Handler{handler}, r.scriptExport.Handlers...)
 
 	return nil
+}
+
+func extractHeaderFromLine(line string) (string, error) {
+	res := handlerStartRegexp.FindStringSubmatch(line)
+	if res == nil || len(res) < 4 {
+		return "", errors.Errorf("Header does not match expected pattern: %s", line)
+	}
+
+	return res[2], nil
 }

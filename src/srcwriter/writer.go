@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-	"github.com/rubensayshi/duconverter/src/dustructs"
-	"github.com/rubensayshi/duconverter/src/srcutils"
+	"github.com/rubensayshi/dubby/src/dustructs"
+	"github.com/rubensayshi/dubby/src/srcutils"
 )
 
 var libHeaderRegex = regexp.MustCompile(`-- !DU\[lib]: (.*?)\n\n?`)
@@ -23,6 +23,18 @@ func NewSrcWriter(scriptExport *dustructs.ScriptExport) *SrcWriter {
 	return &SrcWriter{
 		scriptExport: *scriptExport,
 	}
+}
+
+type SlotSrc struct {
+	key      int
+	name     string
+	mainCode []string
+	handlers []*SlotSrcHandler
+}
+
+type SlotSrcHandler struct {
+	code []string
+	sig  string
 }
 
 func (i *SrcWriter) WriteTo(outputDir string) error {
@@ -46,20 +58,23 @@ func (i *SrcWriter) WriteTo(outputDir string) error {
 		return errors.WithStack(err)
 	}
 
-	for k, slot := range i.scriptExport.Slots {
-		slotPath := path.Join(outputDir, "slots", fmt.Sprintf("%d.%s", k, slot.Name))
-		err = os.MkdirAll(slotPath, 0777)
-		if err != nil {
-			return errors.WithStack(err)
+	libKey := 0
+
+	// create intermediate struct to hold data per slot, because we'll write the aggregate in 1 file
+	slots := make(map[int]*SlotSrc, len(i.scriptExport.Slots))
+	for i, slot := range i.scriptExport.Slots {
+		slots[i] = &SlotSrc{
+			key:      i,
+			name:     slot.Name,
+			mainCode: []string{},
+			handlers: []*SlotSrcHandler{},
 		}
 	}
-
-	libKey := 0
-	handlerKeyOffset := 0
 
 	for _, handler := range i.scriptExport.Handlers {
 		code := handler.Code
 
+		// if marked as lib then we place it in the libs folder
 		if strings.HasPrefix(code, "-- !DU[lib]: ") {
 			libHeaders := libHeaderRegex.FindAllString(code, -1)
 			libs := libHeaderRegex.Split(code, -1)[1:]
@@ -83,28 +98,70 @@ func (i *SrcWriter) WriteTo(outputDir string) error {
 				}
 			}
 
-			handlerKeyOffset -= 1
-
 		} else {
-			slot := i.scriptExport.Slots[handler.Filter.SlotKey]
-			slotPath := path.Join(outputDir, "slots", fmt.Sprintf("%d.%s", handler.Filter.SlotKey, slot.Name))
+			slotSrc := slots[handler.Filter.SlotKey]
 
-			handlerKey := handler.Key + handlerKeyOffset
-
-			handlerPath := path.Join(slotPath, fmt.Sprintf("%d.%s.lua", handlerKey, handler.Filter.Signature))
-
-			sig, err := srcutils.SignatureWithArgs(handler.Filter.Signature, handler.Filter.Args)
+			sig, err := srcutils.MakeHeader(handler.Filter.Signature, handler.Filter.Args)
 			if err != nil {
 				return errors.WithStack(err)
 			}
 
-			// add signature as first line
-			code = fmt.Sprintf("-- !DU: %s\n", sig) + code
+			// expand the code into lines, ignore 1 trailing blank line
+			lines := strings.Split(strings.TrimSuffix(code, "\n"), "\n")
 
-			err = ioutil.WriteFile(handlerPath, []byte(code), 0666)
-			if err != nil {
-				return errors.WithStack(err)
+			// main code block in start() filter is special
+			if sig == "start()" && lines[0] == "-- !DU: main" {
+				// trim off the marker
+				lines = lines[1:]
+				// trim off 1 blank line
+				if lines[0] == "" {
+					lines = lines[1:]
+				}
+				slotSrc.mainCode = append(slotSrc.mainCode, lines...)
+			} else {
+				slotSrc.handlers = append(slotSrc.handlers, &SlotSrcHandler{
+					code: lines,
+					sig:  sig,
+				})
 			}
+		}
+	}
+
+	for _, slotSrc := range slots {
+		if len(slotSrc.handlers) == 0 {
+			continue
+		}
+
+		slotPath := path.Join(outputDir, "slots", fmt.Sprintf("%d.%s.lua", slotSrc.key, slotSrc.name))
+
+		out := make([]string, 0)
+
+		// add main code block first
+		out = append(out, slotSrc.mainCode...)
+		out = append(out, "")
+
+		// then add the handlers
+		for _, handler := range slotSrc.handlers {
+			// open our code block with `do` and its marker
+			out = append(out, fmt.Sprintf("do -- !DU: %s", handler.sig))
+
+			// indent the code @TODO: some crazy people like 2 spaces or tabs ...
+			indented := make([]string, len(handler.code))
+			for k, l := range handler.code {
+				if l != "" {
+					indented[k] = "    " + handler.code[k]
+				}
+			}
+
+			out = append(out, indented...)
+
+			// close the block
+			out = append(out, fmt.Sprintf("end -- !DU: end"), "")
+		}
+
+		err = ioutil.WriteFile(slotPath, []byte(strings.Join(out, "\n")), 0666)
+		if err != nil {
+			return errors.WithStack(err)
 		}
 	}
 

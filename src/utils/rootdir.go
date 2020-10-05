@@ -9,7 +9,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-const PACKAGE = "github.com/rubensayshi/duconverter"
+const PACKAGE = "github.com/rubensayshi/dubby"
 const THISFILE = "src/utils/rootdir.go"
 
 var ROOT = mustGetRootDir()
