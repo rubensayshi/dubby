@@ -6,7 +6,6 @@ import (
 	"strconv"
 
 	"gopkg.in/yaml.v2"
-
 	"github.com/pkg/errors"
 )
 
@@ -24,6 +23,7 @@ type ScriptExport struct {
 }
 
 var _ yaml.Marshaler = &ScriptExport{}
+var _ yaml.Unmarshaler = &ScriptExport{}
 
 func NewScriptExport() *ScriptExport {
 	s := &ScriptExport{

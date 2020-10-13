@@ -2,7 +2,6 @@ package dustructs
 
 import (
 	"github.com/pkg/errors"
-	"gopkg.in/yaml.v2"
 )
 
 type scriptExportYaml struct {
@@ -20,9 +19,9 @@ type slotYaml struct {
 	Select *string `yaml:"select"`
 }
 
-func (e *ScriptExport) UnmarshalYAML(d []byte) error {
+func (e *ScriptExport) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	tmp := &scriptExportYaml{}
-	err := yaml.Unmarshal(d, tmp)
+	err := unmarshal(tmp)
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -44,7 +43,7 @@ func (e *ScriptExport) UnmarshalYAML(d []byte) error {
 	}
 
 	slotKeyIdx := 0
-	handlers := make([]*Handler, len(tmp.Handlers))
+	handlers := make([]*Handler, 0, len(tmp.Handlers))
 	for slot, filters := range tmp.Handlers {
 		slotKey := 0
 		if slot == "unit" {
