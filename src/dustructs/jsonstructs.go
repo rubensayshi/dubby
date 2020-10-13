@@ -2,8 +2,10 @@ package dustructs
 
 import (
 	"encoding/json"
-	"strconv"
 	"fmt"
+	"strconv"
+
+	"gopkg.in/yaml.v2"
 
 	"github.com/pkg/errors"
 )
@@ -20,6 +22,8 @@ type ScriptExport struct {
 	Methods  []*Method
 	Events   []*Event
 }
+
+var _ yaml.Marshaler = &ScriptExport{}
 
 func NewScriptExport() *ScriptExport {
 	s := &ScriptExport{
@@ -69,10 +73,10 @@ func (e *ScriptExport) UnmarshalJSON(d []byte) error {
 		handlers[k] = &Handler{
 			Code: v.Code,
 			Filter: &Filter{
-				Args: v.Filter.Args,
-				Signature: v.Filter.Signature, 
-				SlotKey: int(slotKey),
-			}, 
+				Args:      v.Filter.Args,
+				Signature: v.Filter.Signature,
+				SlotKey:   int(slotKey),
+			},
 			Key: int(key),
 		}
 	}
@@ -97,9 +101,9 @@ func (e *ScriptExport) MarshalJSON() ([]byte, error) {
 		handlers[k] = &handlerRaw{
 			Code: v.Code,
 			Filter: &filterRaw{
-				Args: v.Filter.Args,
+				Args:      v.Filter.Args,
 				Signature: v.Filter.Signature,
-				SlotKey: json.Number(fmt.Sprintf("%d", v.Filter.SlotKey)),
+				SlotKey:   json.Number(fmt.Sprintf("%d", v.Filter.SlotKey)),
 			},
 			Key: json.Number(fmt.Sprintf("%d", v.Key)),
 		}
@@ -120,14 +124,26 @@ func (e *ScriptExport) MarshalJSON() ([]byte, error) {
 }
 
 type Slot struct {
-	Name string `json:"name"`
-	Type *Type  `json:"type"`
+	Name     string        `json:"name"`
+	Type     *Type         `json:"type"`
+	AutoConf *SlotAutoConf `json:"-"`
 }
 
 func NewSlot(name string) *Slot {
 	return &Slot{
 		Name: name,
 		Type: NewType(),
+	}
+}
+
+type SlotAutoConf struct {
+	Class  string  `json:"class"`
+	Select *string `json:"select"`
+}
+
+func NewSlotAutoConf(class string) *SlotAutoConf {
+	return &SlotAutoConf{
+		Class: class,
 	}
 }
 
@@ -150,15 +166,15 @@ type Method struct {
 }
 
 type Handler struct {
-	Code   string `json:"code"`
+	Code   string  `json:"code"`
 	Filter *Filter `json:"filter"`
-	Key    int    `json:"key,string"`
+	Key    int     `json:"key,string"`
 }
 
 type handlerRaw struct {
-	Code   string `json:"code"`
-	Filter *filterRaw `json:"filter"`
-	Key    json.Number    `json:"key"` // can be quoted and unquoted
+	Code   string      `json:"code"`
+	Filter *filterRaw  `json:"filter"`
+	Key    json.Number `json:"key"` // can be quoted and unquoted
 }
 
 type Filter struct {
@@ -168,9 +184,9 @@ type Filter struct {
 }
 
 type filterRaw struct {
-	Args      []Arg  `json:"args"`
-	Signature string `json:"signature"`
-	SlotKey   json.Number    `json:"slotKey"`  // can be quoted and unquoted
+	Args      []Arg       `json:"args"`
+	Signature string      `json:"signature"`
+	SlotKey   json.Number `json:"slotKey"` // can be quoted and unquoted
 }
 
 type Arg struct {
