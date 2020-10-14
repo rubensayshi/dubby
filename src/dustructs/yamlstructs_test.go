@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMarshalYaml(t *testing.T) {
+func TestMarshalAutoConf(t *testing.T) {
 	assert := require.New(t)
 
 	f, err := ioutil.ReadFile(path.Join(utils.ROOT, "testvectors", "testvector1", "input.json"))
@@ -22,7 +22,7 @@ func TestMarshalYaml(t *testing.T) {
 	err = json.Unmarshal(f, export)
 	assert.NoError(err)
 
-	y, err := yaml.Marshal(export)
+	y, err := MarshalAutoConf(export)
 	assert.NoError(err)
 
 	fexpected, err := ioutil.ReadFile(path.Join(utils.ROOT, "testvectors", "testvector1", "input.conf"))

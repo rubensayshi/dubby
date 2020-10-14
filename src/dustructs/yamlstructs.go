@@ -1,8 +1,18 @@
 package dustructs
 
 import (
+	"fmt"
+	"regexp"
+
+	"gopkg.in/yaml.v2"
+
 	"github.com/pkg/errors"
 )
+
+const uniqueSlotsPadding = "DU__%s__DU%d"
+
+// regexp to find the padding we added to make slots keys unique
+var reUniqueSlotsPadding = regexp.MustCompile(`DU__(.+?)__DU([0-9]+)`)
 
 type scriptExportYaml struct {
 	Slots    map[string]*slotYaml              `yaml:"slots"`
@@ -17,6 +27,18 @@ type filterYaml struct {
 type slotYaml struct {
 	Class  string  `yaml:"class"`
 	Select *string `yaml:"select"`
+}
+
+func MarshalAutoConf(e *ScriptExport) ([]byte, error) {
+	out, err := yaml.Marshal(e)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	// strip the padding, autoconf isn't real yaml and can have duplicates
+	out = reUniqueSlotsPadding.ReplaceAll(out, []byte("$1"))
+
+	return out, nil
 }
 
 func (e *ScriptExport) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -91,10 +113,12 @@ func (e *ScriptExport) MarshalYAML() (interface{}, error) {
 		handlers[v.Name] = make(map[string]*filterYaml)
 	}
 
-	for _, v := range e.Handlers {
+	for k, v := range e.Handlers {
 		slot := e.Slots[v.Filter.SlotKey]
 
 		fn := v.Filter.Signature // @TODO: sig to fn
+		// add padding to make the slots unique
+		fn = fmt.Sprintf(uniqueSlotsPadding, fn, k)
 
 		handlers[slot.Name][fn] = &filterYaml{
 			Args: v.Filter.Args,
