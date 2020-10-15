@@ -8,10 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/rubensayshi/dubby/src/luamin"
-
 	"github.com/pkg/errors"
-	"github.com/rubensayshi/dubby/src/dustructs"
+	"github.com/rubensayshi/dubby/src/luamin"
 	"github.com/rubensayshi/dubby/src/srcutils"
 )
 
@@ -19,7 +17,7 @@ var badHandlerStartRegexp = regexp.MustCompile(`^.*-- ?!DU:.*$`)
 var handlerStartRegexp = regexp.MustCompile(`^(do)? *-- ?!DU: *((?P<fn>[a-zA-Z0-9_-]+)\(\[?(?P<args>.*?)\]?\)) *$`)
 var handlerEndRegexp = regexp.MustCompile(`^(end)? *-- ?!DU: end *$`)
 
-func Read(srcDir string) (*dustructs.ScriptExport, error) {
+func Read(srcDir string) (*srcutils.ScriptExport, error) {
 	r := NewSrcReader(srcDir, false)
 	err := r.Read()
 	if err != nil {
@@ -32,7 +30,7 @@ func Read(srcDir string) (*dustructs.ScriptExport, error) {
 type SrcReader struct {
 	srcDir       string
 	minify       bool
-	scriptExport *dustructs.ScriptExport
+	scriptExport *srcutils.ScriptExport
 	report       *Report
 }
 
@@ -45,12 +43,12 @@ func NewSrcReader(srcDir string, minify bool) *SrcReader {
 	return &SrcReader{
 		srcDir:       srcDir,
 		minify:       minify,
-		scriptExport: dustructs.NewScriptExport(),
+		scriptExport: srcutils.NewScriptExport(),
 		report:       &Report{},
 	}
 }
 
-func (r *SrcReader) ScriptExport() *dustructs.ScriptExport {
+func (r *SrcReader) ScriptExport() *srcutils.ScriptExport {
 	return r.scriptExport
 }
 
@@ -121,7 +119,7 @@ func (r *SrcReader) readFromSlotsDir(slotsDir string) error {
 
 		// init the slot
 		if r.scriptExport.Slots[slotKey] == nil {
-			r.scriptExport.Slots[slotKey] = dustructs.NewSlot(slotName)
+			r.scriptExport.Slots[slotKey] = srcutils.NewSlot(slotName)
 		}
 
 		err = r.readFromSlotFile(slotFilePath, slotKey)
@@ -134,7 +132,7 @@ func (r *SrcReader) readFromSlotsDir(slotsDir string) error {
 }
 
 func (r *SrcReader) readFromSlotFile(filePath string, slotKey int) error {
-	handlers := make([]*dustructs.Handler, 0)
+	handlers := make([]*srcutils.Handler, 0)
 
 	buf, err := ioutil.ReadFile(filePath)
 	if err != nil {
@@ -146,7 +144,7 @@ func (r *SrcReader) readFromSlotFile(filePath string, slotKey int) error {
 
 	lines := strings.Split(content, "\n")
 	if len(lines) > 0 {
-		var handler *dustructs.Handler
+		var handler *srcutils.Handler
 
 		mainCode := make([]string, 0)
 		handlerCode := make([]string, 0)
@@ -158,20 +156,20 @@ func (r *SrcReader) readFromSlotFile(filePath string, slotKey int) error {
 					return errors.WithStack(err)
 				}
 
-				fnname, args, err := srcutils.ParseHeader(header)
+				fnname, args, err := srcutils.ParseFilterCall(header)
 				if err != nil {
 					return errors.WithStack(err)
 				}
 
-				if srcutils.FilterSignatures[fnname] == "" {
+				if srcutils.FiltersBySignatures[fnname] == "" {
 					return errors.Errorf("unknown filter signature: [%d][%s]", k, line)
 				}
 
-				signature := srcutils.FilterSignatures[fnname]
-				header, _ = srcutils.MakeHeader(signature, args)
+				signature := srcutils.FiltersBySignatures[fnname]
+				header, _ = srcutils.MakeFilterCallFromSignature(signature, args)
 
-				handler = &dustructs.Handler{
-					Filter: &dustructs.Filter{
+				handler = &srcutils.Handler{
+					Filter: &srcutils.Filter{
 						Signature: header,
 						Args:      args,
 						SlotKey:   slotKey,
@@ -258,15 +256,15 @@ func (r *SrcReader) readFromSlotFile(filePath string, slotKey int) error {
 					r.report.MinifiedLen += len(code)
 				}
 
-				mainHandler := &dustructs.Handler{
+				mainHandler := &srcutils.Handler{
 					Code: code,
-					Filter: &dustructs.Filter{
+					Filter: &srcutils.Filter{
 						Signature: "start()",
-						Args:      []dustructs.Arg{},
+						Args:      []srcutils.Arg{},
 						SlotKey:   slotKey,
 					},
 				}
-				handlers = append([]*dustructs.Handler{mainHandler}, handlers...)
+				handlers = append([]*srcutils.Handler{mainHandler}, handlers...)
 			}
 		}
 	}
@@ -333,17 +331,17 @@ func (r *SrcReader) readFromLibDir(libDir string) error {
 		r.report.MinifiedLen += len(code)
 	}
 
-	handler := &dustructs.Handler{
+	handler := &srcutils.Handler{
 		Code: code,
-		Filter: &dustructs.Filter{
-			Args:      []dustructs.Arg{},
+		Filter: &srcutils.Filter{
+			Args:      []srcutils.Arg{},
 			Signature: "start()",
-			SlotKey:   dustructs.SLOT_IDX_UNIT,
+			SlotKey:   srcutils.SLOT_IDX_UNIT,
 		},
 		Key: 1, // @TODO: maybe we can do 0?
 	}
 
-	r.scriptExport.Handlers = append([]*dustructs.Handler{handler}, r.scriptExport.Handlers...)
+	r.scriptExport.Handlers = append([]*srcutils.Handler{handler}, r.scriptExport.Handlers...)
 
 	return nil
 }

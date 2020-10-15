@@ -6,24 +6,12 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-	"github.com/rubensayshi/dubby/src/dustructs"
 )
 
-var FilterSignatures = map[string]string{
-	"start":       "start()",
-	"stop":        "stop()",
-	"flush":       "flush()",
-	"update":      "update()",
-	"tick":        "tick(timerId)",
-	"actionStart": "actionStart(action)",
-	"actionStop":  "actionStop(action)",
-	"actionLoop":  "actionLoop(action)",
-}
+var reFilterCall = regexp.MustCompile(`^ *(?P<fn>[a-zA-Z0-9_-]+)\(\[?(?P<args>.*?)\]?\) *$`)
 
-var sigRegex = regexp.MustCompile(`^ *(?P<fn>[a-zA-Z0-9_-]+)\(\[?(?P<args>.*?)\]?\) *$`)
-
-func MakeHeader(signature string, args []dustructs.Arg) (string, error) {
-	res := sigRegex.FindStringSubmatch(signature)
+func MakeFilterCallFromSignature(signature string, args []Arg) (string, error) {
+	res := reFilterCall.FindStringSubmatch(signature)
 
 	// parse the args from the signature
 	fn := res[1]
@@ -54,10 +42,19 @@ func MakeHeader(signature string, args []dustructs.Arg) (string, error) {
 	return fmt.Sprintf("%s([%s])", fn, strings.Join(resArgs, ", ")), nil
 }
 
-func ParseHeader(header string) (string, []dustructs.Arg, error) {
-	res := sigRegex.FindStringSubmatch(header)
+func MakeFilterCallFromFn(fn string, args []Arg) (string, error) {
+	resArgs := make([]string, len(args))
+	for k, _ := range resArgs {
+		resArgs[k] = args[k].Value
+	}
+
+	return fmt.Sprintf("%s([%s])", fn, strings.Join(resArgs, ", ")), nil
+}
+
+func ParseFilterCall(filterCall string) (string, []Arg, error) {
+	res := reFilterCall.FindStringSubmatch(filterCall)
 	if res == nil || len(res) < 2 {
-		return "", nil, errors.Errorf("Header does not match expected pattern: %s", header)
+		return "", nil, errors.Errorf("Filter does not match expected pattern: %s", filterCall)
 	}
 
 	// parse the args from the signature
@@ -73,14 +70,14 @@ func ParseHeader(header string) (string, []dustructs.Arg, error) {
 		}
 	}
 
-	args := make([]dustructs.Arg, len(fnargs))
+	args := make([]Arg, len(fnargs))
 
 	for k, fnarg := range fnargs {
 		if strings.HasPrefix(fnarg, `"`) && strings.HasSuffix(fnarg, `"`) {
 			fnarg = fnarg[1 : len(fnarg)-1]
 		}
 
-		args[k] = dustructs.Arg{Value: fnarg}
+		args[k] = Arg{Value: fnarg}
 	}
 
 	return fn, args, nil

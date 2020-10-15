@@ -1,48 +1,16 @@
-package dustructs
+package srcutils
 
 import (
 	"encoding/json"
 	"fmt"
 	"strconv"
 
-	"gopkg.in/yaml.v2"
 	"github.com/pkg/errors"
 )
 
-const (
-	SLOT_IDX_UNIT    = -1
-	SLOT_IDX_SYSTEM  = -2
-	SLOT_IDX_LIBRARY = -3
-)
-
-type ScriptExport struct {
-	Slots    map[int]*Slot
-	Handlers []*Handler
-	Methods  []*Method
-	Events   []*Event
-}
-
-var _ yaml.Marshaler = &ScriptExport{}
-var _ yaml.Unmarshaler = &ScriptExport{}
-
-func NewScriptExport() *ScriptExport {
-	s := &ScriptExport{
-		Slots:    make(map[int]*Slot),
-		Handlers: make([]*Handler, 0),
-		Methods:  make([]*Method, 0),
-		Events:   make([]*Event, 0),
-	}
-
-	s.Slots[SLOT_IDX_UNIT] = NewSlot("unit")
-	s.Slots[SLOT_IDX_SYSTEM] = NewSlot("system")
-	s.Slots[SLOT_IDX_LIBRARY] = NewSlot("library")
-
-	return s
-}
-
 type scriptExportJson struct {
 	Slots    map[string]*Slot `json:"slots"` // keys are quoted numbers
-	Handlers []*handlerRaw    `json:"handlers"`
+	Handlers []*handlerJson   `json:"handlers"`
 	Methods  []*Method        `json:"methods"`
 	Events   []*Event         `json:"events"`
 }
@@ -96,11 +64,11 @@ func (e *ScriptExport) MarshalJSON() ([]byte, error) {
 		slots[kstr] = v
 	}
 
-	handlers := make([]*handlerRaw, len(e.Handlers))
+	handlers := make([]*handlerJson, len(e.Handlers))
 	for k, v := range e.Handlers {
-		handlers[k] = &handlerRaw{
+		handlers[k] = &handlerJson{
 			Code: v.Code,
-			Filter: &filterRaw{
+			Filter: &filterJson{
 				Args:      v.Filter.Args,
 				Signature: v.Filter.Signature,
 				SlotKey:   json.Number(fmt.Sprintf("%d", v.Filter.SlotKey)),
@@ -123,72 +91,14 @@ func (e *ScriptExport) MarshalJSON() ([]byte, error) {
 	return res, nil
 }
 
-type Slot struct {
-	Name     string        `json:"name"`
-	Type     *Type         `json:"type"`
-	AutoConf *SlotAutoConf `json:"-"`
-}
-
-func NewSlot(name string) *Slot {
-	return &Slot{
-		Name: name,
-		Type: NewType(),
-	}
-}
-
-type SlotAutoConf struct {
-	Class  string  `json:"class"`
-	Select *string `json:"select"`
-}
-
-func NewSlotAutoConf(class string) *SlotAutoConf {
-	return &SlotAutoConf{
-		Class: class,
-	}
-}
-
-type Type struct {
-	Events  []Event  `json:"events"`
-	Methods []Method `json:"methods"`
-}
-
-func NewType() *Type {
-	return &Type{
-		Events:  make([]Event, 0),
-		Methods: make([]Method, 0),
-	}
-}
-
-type Event struct {
-}
-
-type Method struct {
-}
-
-type Handler struct {
-	Code   string  `json:"code"`
-	Filter *Filter `json:"filter"`
-	Key    int     `json:"key,string"`
-}
-
-type handlerRaw struct {
+type handlerJson struct {
 	Code   string      `json:"code"`
-	Filter *filterRaw  `json:"filter"`
+	Filter *filterJson `json:"filter"`
 	Key    json.Number `json:"key"` // can be quoted and unquoted
 }
 
-type Filter struct {
-	Args      []Arg  `json:"args"`
-	Signature string `json:"signature"`
-	SlotKey   int    `json:"slotKey,string"`
-}
-
-type filterRaw struct {
+type filterJson struct {
 	Args      []Arg       `json:"args"`
 	Signature string      `json:"signature"`
 	SlotKey   json.Number `json:"slotKey"` // can be quoted and unquoted
-}
-
-type Arg struct {
-	Value string `json:"value"`
 }

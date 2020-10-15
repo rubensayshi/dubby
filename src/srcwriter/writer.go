@@ -9,17 +9,16 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-	"github.com/rubensayshi/dubby/src/dustructs"
 	"github.com/rubensayshi/dubby/src/srcutils"
 )
 
 var libHeaderRegex = regexp.MustCompile(`-- !DU\[lib]: (.*?)\n\n?`)
 
 type SrcWriter struct {
-	scriptExport dustructs.ScriptExport
+	scriptExport srcutils.ScriptExport
 }
 
-func NewSrcWriter(scriptExport *dustructs.ScriptExport) *SrcWriter {
+func NewSrcWriter(scriptExport *srcutils.ScriptExport) *SrcWriter {
 	return &SrcWriter{
 		scriptExport: *scriptExport,
 	}
@@ -101,7 +100,7 @@ func (i *SrcWriter) WriteTo(outputDir string) error {
 		} else {
 			slotSrc := slots[handler.Filter.SlotKey]
 
-			sig, err := srcutils.MakeHeader(handler.Filter.Signature, handler.Filter.Args)
+			filterCall, err := srcutils.MakeFilterCallFromSignature(handler.Filter.Signature, handler.Filter.Args)
 			if err != nil {
 				return errors.WithStack(err)
 			}
@@ -110,7 +109,7 @@ func (i *SrcWriter) WriteTo(outputDir string) error {
 			lines := strings.Split(strings.TrimSuffix(code, "\n"), "\n")
 
 			// main code block in start() filter is special
-			if sig == "start()" && lines[0] == "-- !DU: main" {
+			if filterCall == "start()" && lines[0] == "-- !DU: main" {
 				// trim off the marker
 				lines = lines[1:]
 				// trim off 1 blank line
@@ -121,7 +120,7 @@ func (i *SrcWriter) WriteTo(outputDir string) error {
 			} else {
 				slotSrc.handlers = append(slotSrc.handlers, &SlotSrcHandler{
 					code: lines,
-					sig:  sig,
+					sig:  filterCall,
 				})
 			}
 		}

@@ -1,4 +1,4 @@
-package dustructs
+package srcutils
 
 import (
 	"fmt"
@@ -16,7 +16,7 @@ var reUniqueSlotsPadding = regexp.MustCompile(`DU__(.+?)__DU([0-9]+)`)
 
 type scriptExportYaml struct {
 	Slots    map[string]*slotYaml              `yaml:"slots"`
-	Handlers map[string]map[string]*filterYaml `yaml:"handlers"` // @TODO: technically we can have duplicates in DUs "yaml"
+	Handlers map[string]map[string]*filterYaml `yaml:"handlers"`
 }
 
 type filterYaml struct {
@@ -39,6 +39,16 @@ func MarshalAutoConf(e *ScriptExport) ([]byte, error) {
 	out = reUniqueSlotsPadding.ReplaceAll(out, []byte("$1"))
 
 	return out, nil
+}
+
+func UnmarshalAutoConf(input []byte) (*ScriptExport, error) {
+	e := &ScriptExport{}
+	err := yaml.Unmarshal(input, e)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	return e, nil
 }
 
 func (e *ScriptExport) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -64,6 +74,29 @@ func (e *ScriptExport) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		}
 	}
 
+	if slots[SLOT_IDX_UNIT] == nil {
+		slots[SLOT_IDX_UNIT] = &Slot{
+			Name:     "unit",
+			Type:     NewType(),
+			AutoConf: nil,
+		}
+	}
+	if slots[SLOT_IDX_SYSTEM] == nil {
+		slots[SLOT_IDX_SYSTEM] = &Slot{
+			Name:     "system",
+			Type:     NewType(),
+			AutoConf: nil,
+		}
+	}
+
+	if slots[SLOT_IDX_LIBRARY] == nil {
+		slots[SLOT_IDX_LIBRARY] = &Slot{
+			Name:     "library",
+			Type:     NewType(),
+			AutoConf: nil,
+		}
+	}
+
 	slotKeyIdx := 0
 	handlers := make([]*Handler, 0, len(tmp.Handlers))
 	for slot, filters := range tmp.Handlers {
@@ -80,11 +113,22 @@ func (e *ScriptExport) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		}
 
 		for k, v := range filters {
+			fn, _, err := ParseFilterCall(k)
+			if err != nil {
+				return errors.WithStack(err)
+			}
+
+			if FilterSignatures[fn] == "" {
+				return errors.Errorf("Unknown filter [%s] (from %s)", fn, k)
+			}
+
+			filter := FilterSignatures[fn]
+
 			handlers = append(handlers, &Handler{
 				Code: v.Code,
 				Filter: &Filter{
 					Args:      v.Args,
-					Signature: FilterSignatures[k],
+					Signature: filter,
 					SlotKey:   slotKey,
 				},
 				Key: len(handlers) + 1,

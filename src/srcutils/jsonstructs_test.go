@@ -1,4 +1,4 @@
-package dustructs
+package srcutils
 
 import (
 	"encoding/json"

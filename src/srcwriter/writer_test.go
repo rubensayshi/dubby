@@ -7,19 +7,44 @@ import (
 	"path"
 	"testing"
 
-	"github.com/rubensayshi/dubby/src/dustructs"
+	"github.com/rubensayshi/dubby/src/srcutils"
+
 	"github.com/rubensayshi/dubby/src/utils"
 	"github.com/stretchr/testify/require"
 )
 
-func TestSrcWriter_WriteTo1(t *testing.T) {
+func TestSrcWriter_JsonWriteTo1(t *testing.T) {
 	assert := require.New(t)
 
 	f, err := ioutil.ReadFile(path.Join(utils.ROOT, "testvectors/testvector1", "input.json"))
 	assert.NoError(err)
 
-	export := &dustructs.ScriptExport{}
+	export := &srcutils.ScriptExport{}
 	err = json.Unmarshal(f, export)
+	assert.NoError(err)
+
+	dir, err := ioutil.TempDir(path.Join(utils.ROOT, "tmp"), "test")
+	assert.NoError(err)
+	defer os.RemoveAll(dir) // always cleanup the mess
+
+	w := NewSrcWriter(export)
+	err = w.WriteTo(dir)
+	assert.NoError(err)
+
+	actualDir := dir
+	expectedDir := path.Join(utils.ROOT, "testvectors/testvector1", "output")
+
+	checkActualDir(assert, actualDir, expectedDir)
+	checkExpectedDir(assert, actualDir, expectedDir)
+}
+
+func TestSrcWriter_YamlWriteTo1(t *testing.T) {
+	assert := require.New(t)
+
+	f, err := ioutil.ReadFile(path.Join(utils.ROOT, "testvectors/testvector1", "input.conf"))
+	assert.NoError(err)
+
+	export, err := srcutils.UnmarshalAutoConf(f)
 	assert.NoError(err)
 
 	dir, err := ioutil.TempDir(path.Join(utils.ROOT, "tmp"), "test")

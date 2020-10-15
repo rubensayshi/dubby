@@ -1,12 +1,10 @@
-package dustructs
+package srcutils
 
 import (
 	"encoding/json"
 	"io/ioutil"
 	"path"
 	"testing"
-
-	"gopkg.in/yaml.v2"
 
 	"github.com/rubensayshi/dubby/src/utils"
 	"github.com/stretchr/testify/require"
@@ -31,14 +29,13 @@ func TestMarshalAutoConf(t *testing.T) {
 	assert.Equal(string(fexpected), string(y))
 }
 
-func TestUnmarshalYaml(t *testing.T) {
+func TestUnmarshalAutoConf(t *testing.T) {
 	assert := require.New(t)
 
 	f, err := ioutil.ReadFile(path.Join(utils.ROOT, "testvectors", "testvector1", "input.conf"))
 	assert.NoError(err)
 
-	export := &ScriptExport{}
-	err = yaml.Unmarshal(f, export)
+	export, err := UnmarshalAutoConf(f)
 	assert.NoError(err)
 
 	assert.Equal(0, len(export.Slots))

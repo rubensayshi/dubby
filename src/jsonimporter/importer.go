@@ -4,11 +4,12 @@ import (
 	"encoding/json"
 	"io/ioutil"
 
+	"github.com/rubensayshi/dubby/src/srcutils"
+
 	"github.com/pkg/errors"
-	"github.com/rubensayshi/dubby/src/dustructs"
 )
 
-func Import(inputFile string) (*dustructs.ScriptExport, error) {
+func Import(inputFile string) (*srcutils.ScriptExport, error) {
 	i := NewImporter()
 
 	scriptExport, err := i.ReadFrom(inputFile)
@@ -26,13 +27,13 @@ func NewImporter() *Importer {
 	return &Importer{}
 }
 
-func (i *Importer) ReadFrom(inputFile string) (*dustructs.ScriptExport, error) {
+func (i *Importer) ReadFrom(inputFile string) (*srcutils.ScriptExport, error) {
 	f, err := ioutil.ReadFile(inputFile)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
-	export := &dustructs.ScriptExport{}
+	export := &srcutils.ScriptExport{}
 	err = json.Unmarshal(f, export)
 	if err != nil {
 		return nil, errors.WithStack(err)

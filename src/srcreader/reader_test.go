@@ -6,7 +6,8 @@ import (
 	"path"
 	"testing"
 
-	"github.com/rubensayshi/dubby/src/dustructs"
+	"github.com/rubensayshi/dubby/src/srcutils"
+
 	"github.com/rubensayshi/dubby/src/utils"
 	"github.com/stretchr/testify/require"
 )
@@ -17,7 +18,7 @@ func TestSrcReader_Read1(t *testing.T) {
 	f, err := ioutil.ReadFile(path.Join(utils.ROOT, "testvectors/testvector1", "input.json"))
 	assert.NoError(err)
 
-	expected := &dustructs.ScriptExport{}
+	expected := &srcutils.ScriptExport{}
 	err = json.Unmarshal(f, expected)
 	assert.NoError(err)
 
