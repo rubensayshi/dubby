@@ -5,10 +5,11 @@ import (
 )
 
 type ScriptExport struct {
-	Slots    map[int]*Slot
-	Handlers []*Handler
-	Methods  []*Method
-	Events   []*Event
+	AutoConfName string // when not "" means this is auto conf
+	Slots        map[int]*Slot
+	Handlers     []*Handler
+	Methods      []*Method
+	Events       []*Event
 }
 
 var _ yaml.Marshaler = &ScriptExport{}
@@ -43,8 +44,8 @@ func NewSlot(name string) *Slot {
 }
 
 type SlotAutoConf struct {
-	Class  string  `json:"class"`
-	Select *string `json:"select"`
+	Class  string
+	Select string
 }
 
 func NewSlotAutoConf(class string) *SlotAutoConf {
@@ -85,4 +86,9 @@ type Filter struct {
 
 type Arg struct {
 	Value string `json:"value"`
+}
+
+type AutoConfConfig struct {
+	Name  string               `yaml:"name"`
+	Slots map[string]*slotYaml `yaml:"slots"`
 }

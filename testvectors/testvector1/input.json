@@ -20,11 +20,25 @@
         "events": [],
         "methods": []
       }
+    },
+    "1": {
+      "name": "core",
+      "type": {
+        "events": [],
+        "methods": []
+      }
+    },
+    "2": {
+      "name": "radar",
+      "type": {
+        "events": [],
+        "methods": []
+      }
     }
   },
   "handlers": [
     {
-      "code": "-- !DU[lib]: lib.inc\n\nfunction startsWith() end\n-- !DU[lib]: morelib.inc\n\nfunction trimPrefix() end\n",
+      "code": "-- !DU[lib]: 0.lib.inc\n\nfunction startsWith() end\n\n-- !DU[lib]: 1.morelib.inc\n\nfunction trimPrefix() end\n",
       "filter": {
         "args": [],
         "signature": "start()",
@@ -58,7 +72,7 @@
             "value": "Live"
           }
         ],
-        "signature": "tick([Live])",
+        "signature": "tick(timerId)",
         "slotKey": "-1"
       },
       "key": "4"

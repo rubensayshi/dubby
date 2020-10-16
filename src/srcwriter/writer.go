@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strings"
 
+	"gopkg.in/yaml.v2"
+
 	"github.com/pkg/errors"
 	"github.com/rubensayshi/dubby/src/srcutils"
 )
@@ -15,12 +17,12 @@ import (
 var libHeaderRegex = regexp.MustCompile(`-- !DU\[lib]: (.*?)\n\n?`)
 
 type SrcWriter struct {
-	scriptExport srcutils.ScriptExport
+	scriptExport *srcutils.ScriptExport
 }
 
 func NewSrcWriter(scriptExport *srcutils.ScriptExport) *SrcWriter {
 	return &SrcWriter{
-		scriptExport: *scriptExport,
+		scriptExport: scriptExport,
 	}
 }
 
@@ -36,7 +38,7 @@ type SlotSrcHandler struct {
 	sig  string
 }
 
-func (i *SrcWriter) WriteTo(outputDir string) error {
+func (w *SrcWriter) WriteTo(outputDir string) error {
 	err := os.RemoveAll(outputDir)
 	if err != nil {
 		return errors.WithStack(err)
@@ -57,11 +59,22 @@ func (i *SrcWriter) WriteTo(outputDir string) error {
 		return errors.WithStack(err)
 	}
 
-	libKey := 0
+	if w.scriptExport.AutoConfName != "" {
+		conf := srcutils.NewAutoConfConfig(w.scriptExport)
+		confYml, err := yaml.Marshal(conf)
+		if err != nil {
+			return errors.WithStack(err)
+		}
+
+		err = ioutil.WriteFile(path.Join(outputDir, "autoconf.yml"), confYml, 0666)
+		if err != nil {
+			return errors.WithStack(err)
+		}
+	}
 
 	// create intermediate struct to hold data per slot, because we'll write the aggregate in 1 file
-	slots := make(map[int]*SlotSrc, len(i.scriptExport.Slots))
-	for i, slot := range i.scriptExport.Slots {
+	slots := make(map[int]*SlotSrc, len(w.scriptExport.Slots))
+	for i, slot := range w.scriptExport.Slots {
 		slots[i] = &SlotSrc{
 			key:      i,
 			name:     slot.Name,
@@ -70,7 +83,7 @@ func (i *SrcWriter) WriteTo(outputDir string) error {
 		}
 	}
 
-	for _, handler := range i.scriptExport.Handlers {
+	for _, handler := range w.scriptExport.Handlers {
 		code := handler.Code
 
 		// if marked as lib then we place it in the libs folder
@@ -88,8 +101,11 @@ func (i *SrcWriter) WriteTo(outputDir string) error {
 				libHeaderMatch := libHeaderRegex.FindStringSubmatch(libHeader)
 				libName := libHeaderMatch[1]
 
-				libPath := path.Join(outputDir, "lib", fmt.Sprintf("%d.%s.lua", libKey, libName))
-				libKey += 1
+				libPath := path.Join(outputDir, "lib", fmt.Sprintf("%s.lua", libName))
+
+				for strings.HasSuffix(libCode, "\n\n") {
+					libCode = strings.TrimSuffix(libCode, "\n")
+				}
 
 				err = ioutil.WriteFile(libPath, []byte(libCode), 0666)
 				if err != nil {
@@ -105,8 +121,12 @@ func (i *SrcWriter) WriteTo(outputDir string) error {
 				return errors.WithStack(err)
 			}
 
+			for strings.HasSuffix(code, "\n\n") {
+				code = strings.TrimSuffix(code, "\n")
+			}
+
 			// expand the code into lines, ignore 1 trailing blank line
-			lines := strings.Split(strings.TrimSuffix(code, "\n"), "\n")
+			lines := strings.Split(code, "\n")
 
 			// main code block in start() filter is special
 			if filterCall == "start()" && lines[0] == "-- !DU: main" {
@@ -136,7 +156,13 @@ func (i *SrcWriter) WriteTo(outputDir string) error {
 		out := make([]string, 0)
 
 		// add main code block first
-		out = append(out, slotSrc.mainCode...)
+		// trim off any white lines
+		mainCode := slotSrc.mainCode
+		for len(mainCode) > 1 && mainCode[len(mainCode)-1] == "" {
+			mainCode = mainCode[:len(mainCode)-1]
+		}
+		out = append(out, mainCode...)
+		// add one final white line
 		out = append(out, "")
 
 		// then add the handlers
@@ -144,11 +170,17 @@ func (i *SrcWriter) WriteTo(outputDir string) error {
 			// open our code block with `do` and its marker
 			out = append(out, fmt.Sprintf("do -- !DU: %s", handler.sig))
 
+			// trim of any white lines
+			code := handler.code
+			for len(code) > 1 && code[len(code)-1] == "" {
+				code = code[:len(code)-1]
+			}
+
 			// indent the code @TODO: some crazy people like 2 spaces or tabs ...
-			indented := make([]string, len(handler.code))
-			for k, l := range handler.code {
+			indented := make([]string, len(code))
+			for k, l := range code {
 				if l != "" {
-					indented[k] = "    " + handler.code[k]
+					indented[k] = "    " + code[k]
 				}
 			}
 
@@ -156,9 +188,11 @@ func (i *SrcWriter) WriteTo(outputDir string) error {
 
 			// close the block
 			out = append(out, fmt.Sprintf("end -- !DU: end"), "")
+
 		}
 
-		err = ioutil.WriteFile(slotPath, []byte(strings.Join(out, "\n")), 0666)
+		code := strings.Join(out, "\n")
+		err = ioutil.WriteFile(slotPath, []byte(code), 0666)
 		if err != nil {
 			return errors.WithStack(err)
 		}

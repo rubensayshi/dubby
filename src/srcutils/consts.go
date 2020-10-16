@@ -47,8 +47,11 @@ var ElementTypes = map[string]ElementType{
 	"library":              NewElementType("Library"),
 }
 
+// FilterSignatures = {"tick": "tick(timerId)", ...}
 var FilterSignatures = map[string]string{}
-var FiltersBySignatures = map[string]string{}
+
+// FiltersBySignature = {"tick(timerId)": "tick", ...}
+var FiltersBySignature = map[string]string{}
 
 func init() {
 	for _, elementType := range ElementTypes {
@@ -59,7 +62,7 @@ func init() {
 			}
 
 			FilterSignatures[fn] = filterSignature
-			FiltersBySignatures[filterSignature] = fn
+			FiltersBySignature[filterSignature] = fn
 		}
 	}
 }

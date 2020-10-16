@@ -35,7 +35,7 @@ func TestSrcWriter_JsonWriteTo1(t *testing.T) {
 	expectedDir := path.Join(utils.ROOT, "testvectors/testvector1", "output")
 
 	checkActualDir(assert, actualDir, expectedDir)
-	checkExpectedDir(assert, actualDir, expectedDir)
+	checkExpectedDir(assert, actualDir, expectedDir, "autoconf.yml")
 }
 
 func TestSrcWriter_YamlWriteTo1(t *testing.T) {
@@ -87,11 +87,22 @@ func checkActualDir(assert *require.Assertions, actualDir string, expectedDir st
 	}
 }
 
-func checkExpectedDir(assert *require.Assertions, actualDir string, expectedDir string) {
+func checkExpectedDir(assert *require.Assertions, actualDir string, expectedDir string, ignoreFiles ...string) {
 	expectedFiles, err := ioutil.ReadDir(expectedDir)
 	assert.NoError(err)
 
 	for _, expectedFile := range expectedFiles {
+		ignore := false
+		for _, ignoreFile := range ignoreFiles {
+			if expectedFile.Name() == ignoreFile {
+				ignore = true
+				continue
+			}
+		}
+		if ignore {
+			continue
+		}
+
 		actualPath := path.Join(actualDir, expectedFile.Name())
 		expectedPath := path.Join(expectedDir, expectedFile.Name())
 

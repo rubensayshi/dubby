@@ -22,18 +22,18 @@ const argsPadding = "DUARGS__%s__DUARGS"
 var reArgsPadding = regexp.MustCompile(`['"]?DUARGS__(.+?)__DUARGS['"]?`)
 
 type scriptExportYaml struct {
-	Slots    map[string]*slotYaml `yaml:"slots"`
-	Handlers yaml.MapSlice        `yaml:"handlers"`
+	Name     string        `yaml:"name"`
+	Slots    yaml.MapSlice `yaml:"slots"`
+	Handlers yaml.MapSlice `yaml:"handlers"`
 }
-
 type filterYaml struct {
 	Args string `yaml:"args"`
 	Code string `yaml:"lua"`
 }
 
 type slotYaml struct {
-	Class  string  `yaml:"class"`
-	Select *string `yaml:"select"`
+	Class  string `yaml:"class"`
+	Select string `yaml:"select,omitempty"`
 }
 
 func MarshalAutoConf(e *ScriptExport) ([]byte, error) {
@@ -52,7 +52,7 @@ func MarshalAutoConf(e *ScriptExport) ([]byte, error) {
 }
 
 func UnmarshalAutoConf(input []byte) (*ScriptExport, error) {
-	e := &ScriptExport{}
+	e := NewScriptExport()
 	err := yaml.Unmarshal(input, e)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -70,7 +70,21 @@ func (e *ScriptExport) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 	slots := make(map[int]*Slot, len(tmp.Slots))
 	k := 0
-	for slotName, slot := range tmp.Slots {
+	for _, v := range tmp.Slots {
+		slotName := v.Key.(string)
+
+		// juggle yaml back and forth is easier than digging through the nested yaml.MapItem
+		slotRaw, err := yaml.Marshal(v.Value)
+		if err != nil {
+			return errors.WithStack(err)
+		}
+
+		slot := &slotYaml{}
+		err = yaml.Unmarshal(slotRaw, slot)
+		if err != nil {
+			return errors.WithStack(err)
+		}
+
 		k++
 
 		slots[k] = &Slot{
@@ -79,7 +93,7 @@ func (e *ScriptExport) UnmarshalYAML(unmarshal func(interface{}) error) error {
 			AutoConf: NewSlotAutoConf(slot.Class),
 		}
 
-		if slot.Select != nil {
+		if slot.Select != "" {
 			slots[k].AutoConf.Select = slot.Select
 		}
 	}
@@ -184,16 +198,19 @@ func (e *ScriptExport) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		}
 	}
 
+	e.AutoConfName = tmp.Name
 	e.Slots = slots
 	e.Handlers = handlers
 
 	return nil
 }
 
-func (e *ScriptExport) MarshalYAML() (interface{}, error) {
+func NewAutoConfConfig(e *ScriptExport) *AutoConfConfig {
+	conf := &AutoConfConfig{
+		Name: e.AutoConfName,
+	}
+
 	slots := make(map[string]*slotYaml, len(e.Slots))
-	handlers := make(yaml.MapSlice, 0, len(e.Slots))
-	handlersBySlotKey := make(map[int]map[string]*filterYaml, len(e.Slots))
 
 	slotKeys := make(sort.IntSlice, 0, len(slots))
 	for k, _ := range e.Slots {
@@ -210,6 +227,37 @@ func (e *ScriptExport) MarshalYAML() (interface{}, error) {
 				Class:  slot.AutoConf.Class,
 				Select: slot.AutoConf.Select,
 			}
+		}
+	}
+
+	conf.Slots = slots
+
+	return conf
+}
+
+func (e *ScriptExport) MarshalYAML() (interface{}, error) {
+	slots := make(yaml.MapSlice, 0, len(e.Slots)-3)
+	handlers := make(yaml.MapSlice, 0, len(e.Slots))
+	handlersBySlotKey := make(map[int]map[string]*filterYaml, len(e.Slots))
+
+	slotKeys := make(sort.IntSlice, 0, len(slots))
+	for k, _ := range e.Slots {
+		slotKeys = append(slotKeys, k)
+	}
+
+	slotKeys.Sort()
+
+	for _, slotKey := range slotKeys {
+		slot := e.Slots[slotKey]
+
+		if slot.AutoConf != nil {
+			slots = append(slots, yaml.MapItem{
+				Key: slot.Name,
+				Value: &slotYaml{
+					Class:  slot.AutoConf.Class,
+					Select: slot.AutoConf.Select,
+				},
+			})
 		}
 
 		filters := make(map[string]*filterYaml)
@@ -249,16 +297,29 @@ func (e *ScriptExport) MarshalYAML() (interface{}, error) {
 		if len(args) > 0 {
 			argsstr = "[" + strings.Join(args, ",") + "]"
 		}
-
 		handlersBySlotKey[slotKey][fn] = &filterYaml{
 			Args: fmt.Sprintf(argsPadding, argsstr),
 			Code: v.Code,
 		}
 	}
 
+	// get rid if handlers without filters
+	finalHandlers := make(yaml.MapSlice, 0, len(handlers))
+	for _, v := range handlers {
+		if len(v.Value.(map[string]*filterYaml)) > 0 {
+			finalHandlers = append(finalHandlers, v)
+		}
+	}
+
+	// alphabetical sort, for testing mostly ...
+	sort.Slice(slots, func(i, j int) bool {
+		return strings.Compare(slots[i].Key.(string), slots[j].Key.(string)) == -1
+	})
+
 	tmp := &scriptExportYaml{
+		Name:     e.AutoConfName,
 		Slots:    slots,
-		Handlers: handlers,
+		Handlers: finalHandlers,
 	}
 
 	return tmp, nil

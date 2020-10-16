@@ -6,8 +6,10 @@ import (
 	"io/ioutil"
 	"os"
 
+	"github.com/rubensayshi/dubby/src/srcutils"
+
 	"github.com/pkg/errors"
-	"github.com/rubensayshi/dubby/src/jsonimporter"
+	"github.com/rubensayshi/dubby/src/importer"
 	"github.com/rubensayshi/dubby/src/srcreader"
 	"github.com/rubensayshi/dubby/src/srcwriter"
 	"github.com/urfave/cli/v2"
@@ -40,7 +42,7 @@ func main() {
 				return errors.Errorf("can't open json file: %s", inputfile)
 			}
 
-			srcdir := c.Args().Get(0)
+			srcdir := c.Args().Get(1)
 			if srcdir == "" {
 				cli.ShowCommandHelpAndExit(c, "parse-to-src", 1)
 				return nil
@@ -61,17 +63,42 @@ func main() {
 		Action: func(c *cli.Context) error {
 			srcdir := c.Args().Get(0)
 			if srcdir == "" {
-				cli.ShowCommandHelpAndExit(c, "parse-to-src", 1)
+				cli.ShowCommandHelpAndExit(c, "export-to-json", 1)
 				return nil
 			}
 
 			outputfile := c.Args().Get(1)
 			if outputfile == "" {
-				cli.ShowCommandHelpAndExit(c, "parse-to-src", 1)
+				cli.ShowCommandHelpAndExit(c, "export-to-json", 1)
 				return nil
 			}
 
 			return exportToJson(srcdir, outputfile, c.Bool("minify"))
+		},
+	}, {
+		Name:      "export-to-autoconf",
+		Aliases:   []string{},
+		Usage:     "compile a source directory and export to autoconf",
+		ArgsUsage: "srcdir outputfile",
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name: "minify",
+			},
+		},
+		Action: func(c *cli.Context) error {
+			srcdir := c.Args().Get(0)
+			if srcdir == "" {
+				cli.ShowCommandHelpAndExit(c, "export-to-autoconf", 1)
+				return nil
+			}
+
+			outputfile := c.Args().Get(1)
+			if outputfile == "" {
+				cli.ShowCommandHelpAndExit(c, "export-to-autoconf", 1)
+				return nil
+			}
+
+			return exportToAutoConf(srcdir, outputfile, c.Bool("minify"))
 		},
 	}}
 
@@ -82,7 +109,7 @@ func main() {
 }
 
 func parseToSrc(inputfile string, srcdir string) error {
-	scriptExport, err := jsonimporter.Import(inputfile)
+	scriptExport, err := importer.Import(inputfile)
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -107,6 +134,35 @@ func exportToJson(srcdir string, outputfile string, minify bool) error {
 	scriptExport := reader.ScriptExport()
 
 	res, err := json.Marshal(scriptExport)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	err = ioutil.WriteFile(outputfile, res, 0666)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	report := reader.Report()
+	if minify {
+		p := float64(report.SrcLen-report.MinifiedLen) / float64(report.SrcLen) * 100
+		fmt.Printf("minified %d bytes of lua -> %d (%.1f%% saved) \n", report.SrcLen, report.MinifiedLen, p)
+	}
+
+	return nil
+}
+
+func exportToAutoConf(srcdir string, outputfile string, minify bool) error {
+	reader := srcreader.NewSrcReader(srcdir, minify)
+
+	err := reader.Read()
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	scriptExport := reader.ScriptExport()
+
+	res, err := srcutils.MarshalAutoConf(scriptExport)
 	if err != nil {
 		return errors.WithStack(err)
 	}

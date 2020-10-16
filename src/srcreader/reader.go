@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	"gopkg.in/yaml.v2"
+
 	"github.com/pkg/errors"
 	"github.com/rubensayshi/dubby/src/luamin"
 	"github.com/rubensayshi/dubby/src/srcutils"
@@ -69,6 +71,11 @@ func (r *SrcReader) readFromSrcDir(dir string) error {
 		return errors.Errorf("slots is a file, expected a directory")
 	}
 
+	err = r.readAutoConfConfig(path.Join(dir, "autoconf.yml"))
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
 	err = r.readFromSlotsDir(path.Join(dir, slots.Name()))
 	if err != nil {
 		return errors.WithStack(err)
@@ -87,6 +94,37 @@ func (r *SrcReader) readFromSrcDir(dir string) error {
 		if err != nil {
 			return errors.WithStack(err)
 		}
+	}
+
+	return nil
+}
+
+func (r *SrcReader) readAutoConfConfig(autoConfFile string) error {
+	autoConfYml, err := ioutil.ReadFile(autoConfFile)
+	if os.IsNotExist(err) {
+		return nil
+	} else if err != nil {
+		return errors.WithStack(err)
+	}
+
+	autoConf := &srcutils.AutoConfConfig{}
+	err = yaml.Unmarshal(autoConfYml, autoConf)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	r.scriptExport.AutoConfName = autoConf.Name
+
+	slotKey := 0
+	for k, slotConfig := range autoConf.Slots {
+		slotKey++
+
+		slot := srcutils.NewSlot(k)
+		slot.AutoConf = &srcutils.SlotAutoConf{
+			Class:  slotConfig.Class,
+			Select: slotConfig.Select,
+		}
+		r.scriptExport.Slots[slotKey] = slot
 	}
 
 	return nil
@@ -161,16 +199,17 @@ func (r *SrcReader) readFromSlotFile(filePath string, slotKey int) error {
 					return errors.WithStack(err)
 				}
 
-				if srcutils.FiltersBySignatures[fnname] == "" {
-					return errors.Errorf("unknown filter signature: [%d][%s]", k, line)
+				if srcutils.FilterSignatures[fnname] == "" {
+					return errors.Errorf("unknown filter signature: [%s] -> [%s] (from: [%d] %s)",
+						header, fnname, k, line)
 				}
 
-				signature := srcutils.FiltersBySignatures[fnname]
+				signature := srcutils.FilterSignatures[fnname]
 				header, _ = srcutils.MakeFilterCallFromSignature(signature, args)
 
 				handler = &srcutils.Handler{
 					Filter: &srcutils.Filter{
-						Signature: header,
+						Signature: signature,
 						Args:      args,
 						SlotKey:   slotKey,
 					},

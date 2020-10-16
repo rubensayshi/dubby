@@ -1,7 +1,6 @@
 package srcutils
 
 import (
-	"encoding/json"
 	"io/ioutil"
 	"path"
 	"testing"
@@ -13,11 +12,10 @@ import (
 func TestMarshalAutoConf(t *testing.T) {
 	assert := require.New(t)
 
-	f, err := ioutil.ReadFile(path.Join(utils.ROOT, "testvectors", "testvector1", "input.json"))
+	f, err := ioutil.ReadFile(path.Join(utils.ROOT, "testvectors", "testvector1", "input.conf"))
 	assert.NoError(err)
 
-	export := &ScriptExport{}
-	err = json.Unmarshal(f, export)
+	export, err := UnmarshalAutoConf(f)
 	assert.NoError(err)
 
 	y, err := MarshalAutoConf(export)
@@ -38,7 +36,7 @@ func TestUnmarshalAutoConf(t *testing.T) {
 	export, err := UnmarshalAutoConf(f)
 	assert.NoError(err)
 
-	assert.Equal(3, len(export.Slots))
+	assert.Equal(5, len(export.Slots))
 	assert.Equal(4, len(export.Handlers))
 	assert.Equal("yeeehaaaa(\"tick\")", export.Handlers[3].Code)
 }

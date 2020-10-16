@@ -1,0 +1,7 @@
+name: My AutoConf
+slots:
+  core:
+    class: CoreUnit
+  radar:
+    class: RadarPVPUnit
+    select: manual

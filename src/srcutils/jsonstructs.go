@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/pkg/errors"
 )
@@ -35,8 +36,17 @@ func (e *ScriptExport) UnmarshalJSON(d []byte) error {
 
 	handlers := make([]*Handler, len(tmp.Handlers))
 	for k, v := range tmp.Handlers {
-		slotKey, _ := v.Filter.SlotKey.Int64()
-		key, _ := v.Key.Int64()
+		slotKeyRaw := strings.Trim(string(v.Filter.SlotKey), `"`)
+		slotKey, err := strconv.ParseInt(slotKeyRaw, 10, 64)
+		if err != nil {
+			return errors.WithStack(err)
+		}
+
+		keyRaw := strings.Trim(string(v.Key), `"`)
+		key, err := strconv.ParseInt(keyRaw, 10, 64)
+		if err != nil {
+			return errors.WithStack(err)
+		}
 
 		handlers[k] = &Handler{
 			Code: v.Code,
@@ -71,9 +81,9 @@ func (e *ScriptExport) MarshalJSON() ([]byte, error) {
 			Filter: &filterJson{
 				Args:      v.Filter.Args,
 				Signature: v.Filter.Signature,
-				SlotKey:   json.Number(fmt.Sprintf("%d", v.Filter.SlotKey)),
+				SlotKey:   []byte(fmt.Sprintf("\"%d\"", v.Filter.SlotKey)),
 			},
-			Key: json.Number(fmt.Sprintf("%d", v.Key)),
+			Key: []byte(fmt.Sprintf("\"%d\"", v.Key)),
 		}
 	}
 
@@ -92,13 +102,13 @@ func (e *ScriptExport) MarshalJSON() ([]byte, error) {
 }
 
 type handlerJson struct {
-	Code   string      `json:"code"`
-	Filter *filterJson `json:"filter"`
-	Key    json.Number `json:"key"` // can be quoted and unquoted
+	Code   string          `json:"code"`
+	Filter *filterJson     `json:"filter"`
+	Key    json.RawMessage `json:"key"` // can be quoted and unquoted number
 }
 
 type filterJson struct {
-	Args      []Arg       `json:"args"`
-	Signature string      `json:"signature"`
-	SlotKey   json.Number `json:"slotKey"` // can be quoted and unquoted
+	Args      []Arg           `json:"args"`
+	Signature string          `json:"signature"`
+	SlotKey   json.RawMessage `json:"slotKey"` // can be quoted and unquoted number
 }
