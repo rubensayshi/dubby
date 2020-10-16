@@ -3,24 +3,31 @@ package srcutils
 import (
 	"fmt"
 	"regexp"
+	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v2"
 
 	"github.com/pkg/errors"
 )
 
-const uniqueSlotsPadding = "DU__%s__DU%d"
+const uniqueSlotsPadding = "DUSLOT__%s__DUSLOT%d"
 
 // regexp to find the padding we added to make slots keys unique
-var reUniqueSlotsPadding = regexp.MustCompile(`DU__(.+?)__DU([0-9]+)`)
+var reUniqueSlotsPadding = regexp.MustCompile(`DUSLOT__(.+?)__DUSLOT([0-9]+)`)
+
+const argsPadding = "DUARGS__%s__DUARGS"
+
+// regexp to find the padding we added to args
+var reArgsPadding = regexp.MustCompile(`['"]?DUARGS__(.+?)__DUARGS['"]?`)
 
 type scriptExportYaml struct {
-	Slots    map[string]*slotYaml              `yaml:"slots"`
-	Handlers map[string]map[string]*filterYaml `yaml:"handlers"`
+	Slots    map[string]*slotYaml `yaml:"slots"`
+	Handlers yaml.MapSlice        `yaml:"handlers"`
 }
 
 type filterYaml struct {
-	Args []Arg  `yaml:"args"`
+	Args string `yaml:"args"`
 	Code string `yaml:"lua"`
 }
 
@@ -37,6 +44,9 @@ func MarshalAutoConf(e *ScriptExport) ([]byte, error) {
 
 	// strip the padding, autoconf isn't real yaml and can have duplicates
 	out = reUniqueSlotsPadding.ReplaceAll(out, []byte("$1"))
+
+	// strip the padding, autoconf isn't real yaml and can have duplicates
+	out = reArgsPadding.ReplaceAll(out, []byte("$1"))
 
 	return out, nil
 }
@@ -99,7 +109,10 @@ func (e *ScriptExport) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 	slotKeyIdx := 0
 	handlers := make([]*Handler, 0, len(tmp.Handlers))
-	for slot, filters := range tmp.Handlers {
+	for _, s := range tmp.Handlers {
+		slot := s.Key.(string)
+		fmt.Printf("slot: %+v \n", slot)
+
 		slotKey := 0
 		if slot == "unit" {
 			slotKey = SLOT_IDX_UNIT
@@ -112,22 +125,57 @@ func (e *ScriptExport) UnmarshalYAML(unmarshal func(interface{}) error) error {
 			slotKey = slotKeyIdx
 		}
 
-		for k, v := range filters {
-			fn, _, err := ParseFilterCall(k)
-			if err != nil {
-				return errors.WithStack(err)
+		for _, ss := range s.Value.(yaml.MapSlice) {
+			k := ss.Key.(string)
+
+			args := []Arg{}
+			lua := ""
+
+			for _, v := range ss.Value.(yaml.MapSlice) {
+				switch v.Key.(string) {
+				case "args":
+					value, ok := v.Value.([]interface{})
+					if !ok {
+						return errors.Errorf("unsupported type for args (%T)[%+v]", v.Value, v.Value)
+					}
+
+					args = make([]Arg, len(value))
+					for i, a := range value {
+						arg, ok := a.(string)
+						if !ok {
+							return errors.Errorf("unsupported type for arg (%T)[%+v]", a, a)
+						}
+						args[i] = Arg{Value: arg}
+					}
+				case "lua":
+					lua = v.Value.(string)
+				default:
+					return errors.Errorf("unknown key [%s]", v.Key.(string))
+				}
 			}
 
-			if FilterSignatures[fn] == "" {
+			// the key should either by the filter name
+			//  or a parsable signature of which the function is the  filter name
+			fn := ""
+			if FilterSignatures[k] != "" {
+				fn = k
+			} else {
+				fnName, _, err := ParseFilterCall(k)
+				if err != nil {
+					return errors.WithStack(err)
+				}
+				fn = fnName
+			}
+
+			filter, ok := FilterSignatures[fn]
+			if !ok {
 				return errors.Errorf("Unknown filter [%s] (from %s)", fn, k)
 			}
 
-			filter := FilterSignatures[fn]
-
 			handlers = append(handlers, &Handler{
-				Code: v.Code,
+				Code: lua,
 				Filter: &Filter{
-					Args:      v.Args,
+					Args:      args,
 					Signature: filter,
 					SlotKey:   slotKey,
 				},
@@ -144,28 +192,66 @@ func (e *ScriptExport) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 func (e *ScriptExport) MarshalYAML() (interface{}, error) {
 	slots := make(map[string]*slotYaml, len(e.Slots))
-	handlers := make(map[string]map[string]*filterYaml, len(e.Slots))
+	handlers := make(yaml.MapSlice, 0, len(e.Slots))
+	handlersBySlotKey := make(map[int]map[string]*filterYaml, len(e.Slots))
 
-	for _, v := range e.Slots {
-		if v.AutoConf != nil {
-			slots[v.Name] = &slotYaml{
-				Class:  v.AutoConf.Class,
-				Select: v.AutoConf.Select,
+	slotKeys := make(sort.IntSlice, 0, len(slots))
+	for k, _ := range e.Slots {
+		slotKeys = append(slotKeys, k)
+	}
+
+	slotKeys.Sort()
+
+	for _, slotKey := range slotKeys {
+		slot := e.Slots[slotKey]
+
+		if slot.AutoConf != nil {
+			slots[slot.Name] = &slotYaml{
+				Class:  slot.AutoConf.Class,
+				Select: slot.AutoConf.Select,
 			}
 		}
 
-		handlers[v.Name] = make(map[string]*filterYaml)
+		filters := make(map[string]*filterYaml)
+		handlers = append(handlers, yaml.MapItem{
+			Key:   slot.Name,
+			Value: filters,
+		})
+
+		handlersBySlotKey[slotKey] = filters
 	}
 
 	for k, v := range e.Handlers {
-		slot := e.Slots[v.Filter.SlotKey]
+		slotKey := v.Filter.SlotKey
 
-		fn := v.Filter.Signature // @TODO: sig to fn
+		fn, _, err := ParseFilterCall(v.Filter.Signature)
+		if err != nil {
+			return nil, errors.WithStack(err)
+		}
+
+		_, signatureIsValid := FilterSignatures[fn]
+		if !signatureIsValid {
+			return nil, errors.Errorf("invalid signature: %s (from %s)", fn, v.Filter.Signature)
+		}
+
 		// add padding to make the slots unique
 		fn = fmt.Sprintf(uniqueSlotsPadding, fn, k)
 
-		handlers[slot.Name][fn] = &filterYaml{
-			Args: v.Filter.Args,
+		args := make([]string, len(v.Filter.Args))
+		for i, arg := range v.Filter.Args {
+			if strings.Contains(arg.Value, ",") {
+				return nil, errors.Errorf("arg contains a `,`, which probably isn't allow ...")
+			}
+			args[i] = arg.Value
+		}
+
+		argsstr := "[]"
+		if len(args) > 0 {
+			argsstr = "[" + strings.Join(args, ",") + "]"
+		}
+
+		handlersBySlotKey[slotKey][fn] = &filterYaml{
+			Args: fmt.Sprintf(argsPadding, argsstr),
 			Code: v.Code,
 		}
 	}

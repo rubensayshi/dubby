@@ -38,7 +38,7 @@ func TestUnmarshalAutoConf(t *testing.T) {
 	export, err := UnmarshalAutoConf(f)
 	assert.NoError(err)
 
-	assert.Equal(0, len(export.Slots))
-	assert.Equal(2, len(export.Handlers))
-	assert.Equal("yeeehaaaa(\"tick\")", export.Handlers[1].Code)
+	assert.Equal(3, len(export.Slots))
+	assert.Equal(4, len(export.Handlers))
+	assert.Equal("yeeehaaaa(\"tick\")", export.Handlers[3].Code)
 }

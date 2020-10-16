@@ -21,6 +21,7 @@ func TestUnmarshalJSON(t *testing.T) {
 	assert.NoError(err)
 
 	assert.Equal(3, len(export.Slots))
+	assert.Equal(4, len(export.Handlers))
 	assert.Equal("unit", export.Slots[SLOT_IDX_UNIT].Name)
 	assert.Equal("-- !DU: main\nfunction yeeehaaaa() end\n", export.Handlers[1].Code)
 }
