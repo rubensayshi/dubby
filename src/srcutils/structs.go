@@ -79,15 +79,10 @@ type Handler struct {
 }
 
 type Filter struct {
-	Args      []Arg  `json:"args"`
-	Signature string `json:"signature"`
-	SlotKey   int    `json:"slotKey,string"`
+	Args      []string `json:"args"`
+	Signature string   `json:"signature"`
+	SlotKey   int      `json:"slotKey,string"`
 }
-
-type Arg struct {
-	Value string `json:"value"`
-}
-
 type AutoConfConfig struct {
 	Name  string               `yaml:"name"`
 	Slots map[string]*slotYaml `yaml:"slots"`

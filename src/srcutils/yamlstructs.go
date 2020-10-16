@@ -16,19 +16,14 @@ const uniqueSlotsPadding = "DUSLOT__%s__DUSLOT%d"
 // regexp to find the padding we added to make slots keys unique
 var reUniqueSlotsPadding = regexp.MustCompile(`DUSLOT__(.+?)__DUSLOT([0-9]+)`)
 
-const argsPadding = "DUARGS__%s__DUARGS"
-
-// regexp to find the padding we added to args
-var reArgsPadding = regexp.MustCompile(`['"]?DUARGS__(.+?)__DUARGS['"]?`)
-
 type scriptExportYaml struct {
 	Name     string        `yaml:"name"`
 	Slots    yaml.MapSlice `yaml:"slots"`
 	Handlers yaml.MapSlice `yaml:"handlers"`
 }
 type filterYaml struct {
-	Args string `yaml:"args,omitempty"`
-	Code string `yaml:"lua"`
+	Args []string `yaml:"args,omitempty,flow"`
+	Code string   `yaml:"lua"`
 }
 
 type slotYaml struct {
@@ -44,9 +39,6 @@ func MarshalAutoConf(e *ScriptExport) ([]byte, error) {
 
 	// strip the padding, autoconf isn't real yaml and can have duplicates
 	out = reUniqueSlotsPadding.ReplaceAll(out, []byte("$1"))
-
-	// strip the padding, autoconf isn't real yaml and can have duplicates
-	out = reArgsPadding.ReplaceAll(out, []byte("$1"))
 
 	return out, nil
 }
@@ -142,7 +134,7 @@ func (e *ScriptExport) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		for _, ss := range s.Value.(yaml.MapSlice) {
 			k := ss.Key.(string)
 
-			args := []Arg{}
+			args := []string{}
 			lua := ""
 
 			for _, v := range ss.Value.(yaml.MapSlice) {
@@ -153,13 +145,13 @@ func (e *ScriptExport) UnmarshalYAML(unmarshal func(interface{}) error) error {
 						return errors.Errorf("unsupported type for args (%T)[%+v]", v.Value, v.Value)
 					}
 
-					args = make([]Arg, len(value))
+					args = make([]string, len(value))
 					for i, a := range value {
 						arg, ok := a.(string)
 						if !ok {
 							return errors.Errorf("unsupported type for arg (%T)[%+v]", a, a)
 						}
-						args[i] = Arg{Value: arg}
+						args[i] = arg
 					}
 				case "lua":
 					lua = v.Value.(string)
@@ -287,20 +279,14 @@ func (e *ScriptExport) MarshalYAML() (interface{}, error) {
 
 		args := make([]string, len(v.Filter.Args))
 		for i, arg := range v.Filter.Args {
-			if strings.Contains(arg.Value, ",") {
+			if strings.Contains(arg, ",") {
 				return nil, errors.Errorf("arg contains a `,`, which probably isn't allow ...")
 			}
-			args[i] = arg.Value
-		}
-
-		argsstr := ""
-		if len(args) > 0 {
-			argsstr = "[" + strings.Join(args, ",") + "]"
-			argsstr = fmt.Sprintf(argsPadding, argsstr)
+			args[i] = arg
 		}
 
 		handlersBySlotKey[slotKey][fn] = &filterYaml{
-			Args: argsstr,
+			Args: args,
 			Code: v.Code,
 		}
 	}

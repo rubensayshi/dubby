@@ -48,10 +48,15 @@ func (e *ScriptExport) UnmarshalJSON(d []byte) error {
 			return errors.WithStack(err)
 		}
 
+		args := make([]string, len(v.Filter.Args))
+		for k, v := range v.Filter.Args {
+			args[k] = v.Value
+		}
+
 		handlers[k] = &Handler{
 			Code: v.Code,
 			Filter: &Filter{
-				Args:      v.Filter.Args,
+				Args:      args,
 				Signature: v.Filter.Signature,
 				SlotKey:   int(slotKey),
 			},
@@ -76,10 +81,15 @@ func (e *ScriptExport) MarshalJSON() ([]byte, error) {
 
 	handlers := make([]*handlerJson, len(e.Handlers))
 	for k, v := range e.Handlers {
+		args := make([]argJson, len(v.Filter.Args))
+		for k, v := range v.Filter.Args {
+			args[k] = argJson{Value: v}
+		}
+
 		handlers[k] = &handlerJson{
 			Code: v.Code,
 			Filter: &filterJson{
-				Args:      v.Filter.Args,
+				Args:      args,
 				Signature: v.Filter.Signature,
 				SlotKey:   []byte(fmt.Sprintf("\"%d\"", v.Filter.SlotKey)),
 			},
@@ -108,7 +118,11 @@ type handlerJson struct {
 }
 
 type filterJson struct {
-	Args      []Arg           `json:"args"`
+	Args      []argJson       `json:"args"`
 	Signature string          `json:"signature"`
 	SlotKey   json.RawMessage `json:"slotKey"` // can be quoted and unquoted number
+}
+
+type argJson struct {
+	Value string `json:"value"`
 }

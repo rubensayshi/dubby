@@ -299,7 +299,7 @@ func (r *SrcReader) readFromSlotFile(filePath string, slotKey int) error {
 					Code: code,
 					Filter: &srcutils.Filter{
 						Signature: "start()",
-						Args:      []srcutils.Arg{},
+						Args:      []string{},
 						SlotKey:   slotKey,
 					},
 				}
@@ -373,7 +373,7 @@ func (r *SrcReader) readFromLibDir(libDir string) error {
 	handler := &srcutils.Handler{
 		Code: code,
 		Filter: &srcutils.Filter{
-			Args:      []srcutils.Arg{},
+			Args:      []string{},
 			Signature: "start()",
 			SlotKey:   srcutils.SLOT_IDX_UNIT,
 		},

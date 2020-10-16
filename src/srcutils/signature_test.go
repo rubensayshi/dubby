@@ -6,66 +6,90 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMakeHeader(t *testing.T) {
-	assert := require.New(t)
+func TestMakeFilterCallFromFn(t *testing.T) {
+	for _, tt := range []struct {
+		fn           string
+		args         []string
+		expectedCall string
+	}{
+		{"tick", []string{}, "tick()"},
+		{"tick", []string{"redraw"}, "tick([redraw])"},
+		{"tick", []string{"Live", "and let Die"}, "tick([Live, and let Die])"},
+		{"tick", []string{"Live", "and, let Die"}, "tick([Live, 'and, let Die'])"},
+	} {
+		tt := tt
+		t.Run(tt.expectedCall, func(t *testing.T) {
+			assert := require.New(t)
 
-	{
-		res, err := MakeFilterCallFromSignature("tick(timerId)", []Arg{{"Live"}})
-		assert.NoError(err)
-		assert.Equal("tick([Live])", res)
-	}
-
-	{
-		res, err := MakeFilterCallFromSignature("tick(timerId, cookie)", []Arg{{"Live"}, {"and Let Die"}})
-		assert.NoError(err)
-		assert.Equal("tick([Live, and Let Die])", res) // @TODO: how is this sane?
+			call, err := MakeFilterCallFromFn(tt.fn, tt.args)
+			assert.NoError(err)
+			assert.Equal(tt.expectedCall, call)
+		})
 	}
 }
 
-func TestParseHeader(t *testing.T) {
-	assert := require.New(t)
+func TestMakeFilterCallFromSignature(t *testing.T) {
+	for _, tt := range []struct {
+		signature    string
+		args         []string
+		expectedCall string
+	}{
+		{"tick(timerId)", []string{"redraw"}, "tick([redraw])"},
+		{"tick(timerId, smtsmt)", []string{"Live", "and let Die"}, "tick([Live, and let Die])"},
+		{"tick(timerId, smtsmt)", []string{"Live", "and, let Die"}, "tick([Live, 'and, let Die'])"},
+	} {
+		tt := tt
+		t.Run(tt.expectedCall, func(t *testing.T) {
+			assert := require.New(t)
 
-	{
-		fn, args, err := ParseFilterCall("tick(\"redraw\")")
-		assert.NoError(err)
-		assert.Equal("tick", fn)
-		assert.Equal(1, len(args))
-		assert.Equal("redraw", args[0].Value)
+			call, err := MakeFilterCallFromSignature(tt.signature, tt.args)
+			assert.NoError(err)
+			assert.Equal(tt.expectedCall, call)
+		})
 	}
+}
 
-	for _, header := range []string{"tick(\"Live\")", "tick([Live])", "tick([\"Live\"])"} {
-		fn, args, err := ParseFilterCall(header)
-		assert.NoError(err)
-		assert.Equal("tick", fn)
-		assert.Equal(1, len(args))
-		assert.Equal("Live", args[0].Value)
+func TestMakeFilterCallFromSignatureErrs(t *testing.T) {
+	for _, tt := range []struct {
+		signature string
+		args      []string
+	}{
+		{"tick(timerId)", []string{"Live", "and let Die"}},
+		{"tick(timerId, smtsmt)", []string{"Live"}},
+	} {
+		tt := tt
+		t.Run(tt.signature, func(t *testing.T) {
+			assert := require.New(t)
+
+			_, err := MakeFilterCallFromSignature(tt.signature, tt.args)
+			assert.Error(err)
+		})
 	}
+}
 
-	for _, header := range []string{"tick(\"Live\", \"and let Die\")", "tick([\"Live\", \"and let Die\"])"} {
-		fn, args, err := ParseFilterCall(header)
-		assert.NoError(err)
-		assert.Equal("tick", fn)
-		assert.Equal(2, len(args))
-		assert.Equal("Live", args[0].Value)
-		assert.Equal("and let Die", args[1].Value)
-	}
-
-	{
-		fn, args, err := ParseFilterCall("tick([Live, and Let Die])")
-		assert.NoError(err)
-		assert.Equal("tick", fn)
-		assert.Equal(2, len(args))
-		assert.Equal("Live", args[0].Value)
-		assert.Equal("and Let Die", args[1].Value)
-	}
-
-	{
-		// @TODO: not sure about this case, how should these args really be parsed?
-		_, _, err := ParseFilterCall("tick([\"Live, and Let Die\"])")
-		assert.NoError(err)
-		//assert.Equal("tick", fn)
-		//assert.Equal(2, len(args))
-		//assert.Equal("Live", args[0].Value)
-		//assert.Equal("and Let Die", args[1].Value)
+func TestParseFilterCall(t *testing.T) {
+	for _, tt := range []struct {
+		call         string
+		expectedFn   string
+		expectedArgs []string
+	}{
+		{"tick()", "tick", nil},
+		{"tick(redraw)", "tick", []string{"redraw"}},
+		{"tick(\"redraw\")", "tick", []string{"redraw"}},
+		{"tick([redraw])", "tick", []string{"redraw"}},
+		{"tick([\"redraw\"])", "tick", []string{"redraw"}},
+		{"tick(Live, and let Die)", "tick", []string{"Live", "and let Die"}},
+		{"tick([Live, and let Die])", "tick", []string{"Live", "and let Die"}},
+		{"tick([Live, \"and, let Die\"])", "tick", []string{"Live", "and, let Die"}},
+		{"tick([Live, 'and, let Die'])", "tick", []string{"Live", "and, let Die"}},
+	} {
+		tt := tt
+		t.Run(tt.call, func(t *testing.T) {
+			assert := require.New(t)
+			fn, args, err := ParseFilterCall(tt.call)
+			assert.NoError(err)
+			assert.Equal(tt.expectedFn, fn)
+			assert.EqualValues(tt.expectedArgs, args)
+		})
 	}
 }

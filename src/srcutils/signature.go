@@ -6,11 +6,12 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+	"gopkg.in/yaml.v2"
 )
 
 var reFilterCall = regexp.MustCompile(`^ *(?P<fn>[a-zA-Z0-9_-]+)\(\[?(?P<args>.*?)\]?\) *$`)
 
-func MakeFilterCallFromSignature(signature string, args []Arg) (string, error) {
+func MakeFilterCallFromSignature(signature string, args []string) (string, error) {
 	res := reFilterCall.FindStringSubmatch(signature)
 
 	// parse the args from the signature
@@ -30,28 +31,32 @@ func MakeFilterCallFromSignature(signature string, args []Arg) (string, error) {
 		return "", errors.Errorf("Wrong number of args, expected %d: %s", len(fnargs), signature)
 	}
 
-	if len(fnargs) == 0 {
+	return MakeFilterCallFromFn(fn, args)
+}
+
+func MakeFilterCallFromFn(fn string, args []string) (string, error) {
+	if len(args) == 0 {
 		return fmt.Sprintf("%s()", fn), nil
 	}
 
-	resArgs := make([]string, len(fnargs))
-	for k, _ := range resArgs {
-		resArgs[k] = args[k].Value
+	// marshall the args as if they're yaml, because that's the format they should be in
+	fnargs := struct {
+		Args []string `yaml:"args,flow"`
+	}{
+		Args: args,
+	}
+	out, err := yaml.Marshal(fnargs)
+	if err != nil {
+		return "", errors.WithStack(err)
 	}
 
-	return fmt.Sprintf("%s([%s])", fn, strings.Join(resArgs, ", ")), nil
+	argsstr := strings.TrimSuffix(strings.TrimPrefix(string(out), "args: "), "\n")
+
+	return fmt.Sprintf("%s(%s)", fn, argsstr), nil
 }
 
-func MakeFilterCallFromFn(fn string, args []Arg) (string, error) {
-	resArgs := make([]string, len(args))
-	for k, _ := range resArgs {
-		resArgs[k] = args[k].Value
-	}
-
-	return fmt.Sprintf("%s([%s])", fn, strings.Join(resArgs, ", ")), nil
-}
-
-func ParseFilterCall(filterCall string) (string, []Arg, error) {
+func ParseFilterCall(filterCall string) (string, []string, error) {
+	// extract the args from the call
 	res := reFilterCall.FindStringSubmatch(filterCall)
 	if res == nil || len(res) < 2 {
 		return "", nil, errors.Errorf("Filter does not match expected pattern: %s", filterCall)
@@ -60,25 +65,20 @@ func ParseFilterCall(filterCall string) (string, []Arg, error) {
 	// parse the args from the signature
 	fn := res[1]
 	argstr := res[2]
-	var fnargs []string
-	if strings.TrimSpace(argstr) == "" {
-		fnargs = []string{}
-	} else {
-		fnargs = strings.Split(res[2], ",")
-		for k, v := range fnargs {
-			fnargs[k] = strings.TrimSpace(v)
-		}
+
+	// wrap args in [] if they're not already, because we're gonna parse it as a yaml list
+	if argstr != "" && !strings.HasPrefix(argstr, "[") {
+		argstr = "[" + argstr + "]"
 	}
 
-	args := make([]Arg, len(fnargs))
-
-	for k, fnarg := range fnargs {
-		if strings.HasPrefix(fnarg, `"`) && strings.HasSuffix(fnarg, `"`) {
-			fnarg = fnarg[1 : len(fnarg)-1]
-		}
-
-		args[k] = Arg{Value: fnarg}
+	// parse the args as if they're yaml, because that's the format they should be in
+	fnargs := struct {
+		Args []string `yaml:"args,flow"`
+	}{}
+	err := yaml.Unmarshal([]byte("args: "+argstr), &fnargs)
+	if err != nil {
+		return "", nil, errors.WithStack(err)
 	}
 
-	return fn, args, nil
+	return fn, fnargs.Args, nil
 }
