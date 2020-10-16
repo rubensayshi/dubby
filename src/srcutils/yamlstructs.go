@@ -6,9 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"gopkg.in/yaml.v2"
-
 	"github.com/pkg/errors"
+	"gopkg.in/yaml.v2"
 )
 
 const uniqueSlotsPadding = "DUSLOT__%s__DUSLOT%d"
@@ -18,9 +17,10 @@ var reUniqueSlotsPadding = regexp.MustCompile(`DUSLOT__(.+?)__DUSLOT([0-9]+)`)
 
 type scriptExportYaml struct {
 	Name     string        `yaml:"name"`
-	Slots    yaml.MapSlice `yaml:"slots"`
-	Handlers yaml.MapSlice `yaml:"handlers"`
+	Slots    yaml.MapSlice `yaml:"slots"`    // using MapSlice to maintain order
+	Handlers yaml.MapSlice `yaml:"handlers"` // using MapSlice to maintain order
 }
+
 type filterYaml struct {
 	Args []string `yaml:"args,omitempty,flow"`
 	Code string   `yaml:"lua"`
@@ -60,17 +60,17 @@ func (e *ScriptExport) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return errors.WithStack(err)
 	}
 
-	slots := make(map[int]*Slot, len(tmp.Slots))
+	// slot counter, starting from 0 (note, -3, -2, -1 already exist)
 	k := 0
+
 	for _, v := range tmp.Slots {
 		slotName := v.Key.(string)
 
-		// juggle yaml back and forth is easier than digging through the nested yaml.MapItem
+		// juggling yaml back and forth is easier than digging through the nested yaml.MapItem
 		slotRaw, err := yaml.Marshal(v.Value)
 		if err != nil {
 			return errors.WithStack(err)
 		}
-
 		slot := &slotYaml{}
 		err = yaml.Unmarshal(slotRaw, slot)
 		if err != nil {
@@ -79,37 +79,14 @@ func (e *ScriptExport) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 		k++
 
-		slots[k] = &Slot{
+		e.Slots[k] = &Slot{
 			Name:     slotName,
 			Type:     NewType(),
 			AutoConf: NewSlotAutoConf(slot.Class),
 		}
 
 		if slot.Select != "" {
-			slots[k].AutoConf.Select = slot.Select
-		}
-	}
-
-	if slots[SLOT_IDX_UNIT] == nil {
-		slots[SLOT_IDX_UNIT] = &Slot{
-			Name:     "unit",
-			Type:     NewType(),
-			AutoConf: nil,
-		}
-	}
-	if slots[SLOT_IDX_SYSTEM] == nil {
-		slots[SLOT_IDX_SYSTEM] = &Slot{
-			Name:     "system",
-			Type:     NewType(),
-			AutoConf: nil,
-		}
-	}
-
-	if slots[SLOT_IDX_LIBRARY] == nil {
-		slots[SLOT_IDX_LIBRARY] = &Slot{
-			Name:     "library",
-			Type:     NewType(),
-			AutoConf: nil,
+			e.Slots[k].AutoConf.Select = slot.Select
 		}
 	}
 
@@ -117,7 +94,6 @@ func (e *ScriptExport) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	handlers := make([]*Handler, 0, len(tmp.Handlers))
 	for _, s := range tmp.Handlers {
 		slot := s.Key.(string)
-		fmt.Printf("slot: %+v \n", slot)
 
 		slotKey := 0
 		if slot == "unit" {
@@ -134,30 +110,15 @@ func (e *ScriptExport) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		for _, ss := range s.Value.(yaml.MapSlice) {
 			k := ss.Key.(string)
 
-			args := []string{}
-			lua := ""
-
-			for _, v := range ss.Value.(yaml.MapSlice) {
-				switch v.Key.(string) {
-				case "args":
-					value, ok := v.Value.([]interface{})
-					if !ok {
-						return errors.Errorf("unsupported type for args (%T)[%+v]", v.Value, v.Value)
-					}
-
-					args = make([]string, len(value))
-					for i, a := range value {
-						arg, ok := a.(string)
-						if !ok {
-							return errors.Errorf("unsupported type for arg (%T)[%+v]", a, a)
-						}
-						args[i] = arg
-					}
-				case "lua":
-					lua = v.Value.(string)
-				default:
-					return errors.Errorf("unknown key [%s]", v.Key.(string))
-				}
+			// juggle back and forth between yaml
+			filterRaw, err := yaml.Marshal(ss.Value)
+			if err != nil {
+				return errors.WithStack(err)
+			}
+			filter := &filterYaml{}
+			err = yaml.Unmarshal(filterRaw, filter)
+			if err != nil {
+				return errors.WithStack(err)
 			}
 
 			// the key should either by the filter name
@@ -173,16 +134,16 @@ func (e *ScriptExport) UnmarshalYAML(unmarshal func(interface{}) error) error {
 				fn = fnName
 			}
 
-			filter, ok := FilterSignatures[fn]
+			signature, ok := FilterSignatures[fn]
 			if !ok {
 				return errors.Errorf("Unknown filter [%s] (from %s)", fn, k)
 			}
 
 			handlers = append(handlers, &Handler{
-				Code: lua,
+				Code: filter.Code,
 				Filter: &Filter{
-					Args:      args,
-					Signature: filter,
+					Args:      filter.Args,
+					Signature: signature,
 					SlotKey:   slotKey,
 				},
 				Key: len(handlers) + 1,
@@ -191,7 +152,6 @@ func (e *ScriptExport) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 
 	e.AutoConfName = tmp.Name
-	e.Slots = slots
 	e.Handlers = handlers
 
 	return nil
@@ -232,11 +192,11 @@ func (e *ScriptExport) MarshalYAML() (interface{}, error) {
 	handlers := make(yaml.MapSlice, 0, len(e.Slots))
 	handlersBySlotKey := make(map[int]map[string]*filterYaml, len(e.Slots))
 
+	// map looses the sorting of our keys, so we need to resort the keys
 	slotKeys := make(sort.IntSlice, 0, len(slots))
 	for k, _ := range e.Slots {
 		slotKeys = append(slotKeys, k)
 	}
-
 	slotKeys.Sort()
 
 	for _, slotKey := range slotKeys {

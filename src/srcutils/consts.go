@@ -12,6 +12,8 @@ const (
 	SLOT_IDX_LIBRARY = -3
 )
 
+const AUTOCONF_CONFIGFILE = "autoconf.yml"
+
 type ElementType struct {
 	ClassName string
 	Filters   []string

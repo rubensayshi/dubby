@@ -71,7 +71,7 @@ func (r *SrcReader) readFromSrcDir(dir string) error {
 		return errors.Errorf("slots is a file, expected a directory")
 	}
 
-	err = r.readAutoConfConfig(path.Join(dir, "autoconf.yml"))
+	err = r.readAutoConfConfig(path.Join(dir, srcutils.AUTOCONF_CONFIGFILE))
 	if err != nil {
 		return errors.WithStack(err)
 	}

@@ -66,7 +66,7 @@ func (w *SrcWriter) WriteTo(outputDir string) error {
 			return errors.WithStack(err)
 		}
 
-		err = ioutil.WriteFile(path.Join(outputDir, "autoconf.yml"), confYml, 0666)
+		err = ioutil.WriteFile(path.Join(outputDir, srcutils.AUTOCONF_CONFIGFILE), confYml, 0666)
 		if err != nil {
 			return errors.WithStack(err)
 		}

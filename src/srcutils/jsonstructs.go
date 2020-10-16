@@ -17,12 +17,14 @@ type scriptExportJson struct {
 }
 
 func (e *ScriptExport) UnmarshalJSON(d []byte) error {
+	// unmarshall into a tmp which resembles the actual json structure
 	tmp := &scriptExportJson{}
 	err := json.Unmarshal(d, tmp)
 	if err != nil {
 		return errors.WithStack(err)
 	}
 
+	// indexes are quoted strings, we need to convert them to ints
 	slots := make(map[int]*Slot, len(tmp.Slots))
 	for k, v := range tmp.Slots {
 		v := v // we're referencing this so need to declare inside the loop
@@ -36,12 +38,14 @@ func (e *ScriptExport) UnmarshalJSON(d []byte) error {
 
 	handlers := make([]*Handler, len(tmp.Handlers))
 	for k, v := range tmp.Handlers {
+		// slotKey can be quoted string (or not)...
 		slotKeyRaw := strings.Trim(string(v.Filter.SlotKey), `"`)
 		slotKey, err := strconv.ParseInt(slotKeyRaw, 10, 64)
 		if err != nil {
 			return errors.WithStack(err)
 		}
 
+		// key can be quoted string (or not)...
 		keyRaw := strings.Trim(string(v.Key), `"`)
 		key, err := strconv.ParseInt(keyRaw, 10, 64)
 		if err != nil {
