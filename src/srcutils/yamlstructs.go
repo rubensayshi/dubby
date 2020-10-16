@@ -27,7 +27,7 @@ type scriptExportYaml struct {
 	Handlers yaml.MapSlice `yaml:"handlers"`
 }
 type filterYaml struct {
-	Args string `yaml:"args"`
+	Args string `yaml:"args,omitempty"`
 	Code string `yaml:"lua"`
 }
 
@@ -293,12 +293,14 @@ func (e *ScriptExport) MarshalYAML() (interface{}, error) {
 			args[i] = arg.Value
 		}
 
-		argsstr := "[]"
+		argsstr := ""
 		if len(args) > 0 {
 			argsstr = "[" + strings.Join(args, ",") + "]"
+			argsstr = fmt.Sprintf(argsPadding, argsstr)
 		}
+
 		handlersBySlotKey[slotKey][fn] = &filterYaml{
-			Args: fmt.Sprintf(argsPadding, argsstr),
+			Args: argsstr,
 			Code: v.Code,
 		}
 	}
